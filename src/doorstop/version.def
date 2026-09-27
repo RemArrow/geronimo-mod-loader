@@ -1,0 +1,19 @@
+LIBRARY version
+EXPORTS
+    GetFileVersionInfoA        = GML_GetFileVersionInfoA         @1
+    GetFileVersionInfoByHandle = GML_GetFileVersionInfoByHandle  @2
+    GetFileVersionInfoExA      = GML_GetFileVersionInfoExA       @3
+    GetFileVersionInfoExW      = GML_GetFileVersionInfoExW       @4
+    GetFileVersionInfoSizeA    = GML_GetFileVersionInfoSizeA     @5
+    GetFileVersionInfoSizeExA  = GML_GetFileVersionInfoSizeExA   @6
+    GetFileVersionInfoSizeExW  = GML_GetFileVersionInfoSizeExW   @7
+    GetFileVersionInfoSizeW    = GML_GetFileVersionInfoSizeW     @8
+    GetFileVersionInfoW        = GML_GetFileVersionInfoW         @9
+    VerFindFileA               = GML_VerFindFileA                @10
+    VerFindFileW               = GML_VerFindFileW                @11
+    VerInstallFileA            = GML_VerInstallFileA             @12
+    VerInstallFileW            = GML_VerInstallFileW             @13
+    VerLanguageNameA           = GML_VerLanguageNameA            @14
+    VerLanguageNameW           = GML_VerLanguageNameW            @15
+    VerQueryValueA             = GML_VerQueryValueA              @16
+    VerQueryValueW             = GML_VerQueryValueW              @17
