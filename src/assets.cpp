@@ -10,6 +10,7 @@
 #include <sstream>
 #include <map>
 #include <unordered_map>
+#include <tuple>
 
 namespace gml::assets {
 
@@ -152,7 +153,162 @@ static bool ParseObj(const std::wstring& path, ObjData& d, std::string& err) {
     return true;
 }
 
-// ------------------------------------------------------------------ mesh build
+// ------------------------------------------------------------------ mesh build: Geometry Scripting
+
+// The primary path. UStaticMesh::BuildFromStaticMeshDescriptions (below) is reachable from
+// Blueprint but its BP API cannot set normals or tangents, and the result renders black in this
+// build. Geometry Scripting (compiled into the shipping game) takes explicit per-vertex normals and
+// UVs, computes MikkT tangents, and CopyMeshToStaticMesh writes all of it into a real UStaticMesh.
+
+static int FieldOffset(UStruct* s, const char* name) {
+    FProperty* p = s ? FindProperty(s, name) : nullptr;
+    return p ? PropOffset(p) : -1;
+}
+static UStruct* ParamStruct(UFunction* fn, const char* name) {
+    FProperty* p = fn ? FindProperty((UStruct*)fn, name) : nullptr;
+    GML_PropInfo i;
+    return p && PropInfo(p, &i) ? i.structType : nullptr;
+}
+static bool SetArray(uint8_t* container, UStruct* s, const char* field, void* data, int count) {
+    int off = FieldOffset(s, field);
+    if (off < 0) return false;
+    *(GML_TArray*)(container + off) = GML_TArray{data, count, count};  // read-only input: our memory
+    return true;
+}
+
+// One vertex per unique (position, uv, normal) corner, grouped by material.
+struct GroupBuffers {
+    std::vector<double> pos, nrm, uv;
+    std::vector<int32_t> tris;
+    std::map<std::tuple<int, int, int>, int32_t> index;
+};
+
+// A UGeometryScriptDebug to pass as `Debug`, and a dump of what it collected.
+static UObject* GsDebug() { return NewObject(FindClass("GeometryScriptDebug"), WorldContext()); }
+static void LogGsDebug(UObject* dbg, const char* what) {
+    if (!dbg) return;
+    FProperty* p = FindProperty((UStruct*)ClassOf(dbg), "Messages");
+    GML_PropInfo pi, ii;
+    if (!p || !PropInfo(p, &pi) || !pi.inner || !PropInfo(pi.inner, &ii)) return;
+    auto* arr = (GML_TArray*)((uint8_t*)dbg + pi.offset);
+    int msgOff = FieldOffset(ii.structType, "Message");
+    for (int i = 0; i < arr->Num && msgOff >= 0; i++)
+        LOGW("%s: Geometry Scripting says: %s", what,
+             TextToString((uint8_t*)arr->Data + (size_t)i * ii.size + msgOff).c_str());
+}
+
+// OBJ -> UDynamicMesh with the OBJ's normals, UV0, material IDs (groupIds[group]) and MikkT tangents.
+static UObject* BuildDynamicMesh(const ObjData& d, const std::function<void(const float*, double*)>& toPos,
+                                 bool swapYZ, bool flip, const std::vector<int>& groupIds) {
+    UClass* dmClass = FindClass("DynamicMesh");
+    UObject* editLib = Lib("GeometryScriptLibrary_MeshBasicEditFunctions");
+    UObject* matLib = Lib("GeometryScriptLibrary_MeshMaterialFunctions");
+    UObject* nrmLib = Lib("GeometryScriptLibrary_MeshNormalsFunctions");
+    if (!dmClass || !editLib || !matLib || !nrmLib) {
+        LOGW("Geometry Scripting is not available in this build");
+        return nullptr;
+    }
+    UObject* dyn = NewObject(dmClass, WorldContext());
+    if (!dyn) return nullptr;
+    KeepAlive(dyn);
+    { Params p(matLib, "EnableMaterialIDs"); p.Set(0, dyn); p.Call(); }
+
+    std::vector<GroupBuffers> groups(d.groups.size());
+    const bool haveNormals = !d.vn.empty();
+    for (auto& t : d.tris) {
+        GroupBuffers& g = groups[t.group];
+        int32_t idx[3];
+        for (int k = 0; k < 3; k++) {
+            const ObjCorner& c = t.c[k];
+            auto key = std::make_tuple(c.v, c.vt, c.vn);
+            auto it = g.index.find(key);
+            if (it == g.index.end()) {
+                double p[3];
+                toPos(&d.v[c.v * 3], p);
+                g.pos.insert(g.pos.end(), {p[0], p[1], p[2]});
+                double n[3] = {0, 0, 1};
+                if (c.vn >= 0) {
+                    n[0] = d.vn[c.vn * 3]; n[1] = d.vn[c.vn * 3 + 1]; n[2] = d.vn[c.vn * 3 + 2];
+                    if (swapYZ) std::swap(n[1], n[2]);  // same (orthogonal) map as positions
+                }
+                g.nrm.insert(g.nrm.end(), {n[0], n[1], n[2]});
+                g.uv.insert(g.uv.end(), {c.vt >= 0 ? (double)d.vt[c.vt * 2] : 0.0,
+                                         c.vt >= 0 ? 1.0 - d.vt[c.vt * 2 + 1] : 0.0});  // OBJ V is bottom-up
+                it = g.index.emplace(key, (int32_t)(g.pos.size() / 3 - 1)).first;
+            }
+            idx[flip ? 2 - k : k] = it->second;
+        }
+        g.tris.insert(g.tris.end(), {idx[0], idx[1], idx[2]});
+    }
+
+    UObject* dbg = GsDebug();
+    for (size_t gi = 0; gi < groups.size(); gi++) {
+        GroupBuffers& g = groups[gi];
+        if (g.tris.empty()) continue;
+        Params ap(editLib, "AppendBuffersToMesh");
+        UStruct* bs = ParamStruct(ap.fn, "Buffers");
+        uint8_t* buf = (uint8_t*)ap.Ptr("Buffers");
+        int nv = (int)(g.pos.size() / 3);
+        bool ok = bs && buf && SetArray(buf, bs, "Vertices", g.pos.data(), nv) &&
+                  SetArray(buf, bs, "Normals", g.nrm.data(), nv) && SetArray(buf, bs, "UV0", g.uv.data(), nv) &&
+                  SetArray(buf, bs, "Triangles", g.tris.data(), (int)(g.tris.size() / 3));
+        if (!ok) { LOGE("unexpected FGeometryScriptSimpleMeshBuffers layout"); return nullptr; }
+        ap.Set(0, dyn);
+        if (void* mid = ap.Ptr("MaterialID")) *(int32_t*)mid = groupIds[gi];
+        if (void* dp = ap.Ptr("Debug")) *(UObject**)dp = dbg;
+        ap.Call();
+    }
+    if (!haveNormals) {
+        Params rn(nrmLib, "RecomputeNormals");
+        rn.Set(0, dyn);
+        if (uint8_t* o = (uint8_t*)rn.Ptr("CalculateOptions")) { o[0] = 1; o[1] = 1; }  // angle + area weighted
+        rn.Call();
+    }
+    {
+        Params ct(nrmLib, "ComputeTangents");
+        ct.Set(0, dyn);
+        if (uint8_t* o = (uint8_t*)ct.Ptr("Options")) o[0] = 2;  // StandardMikkT, UV layer 0
+        if (void* dp = ct.Ptr("Debug")) *(UObject**)dp = dbg;
+        ct.Call();
+    }
+    LogGsDebug(dbg, "mesh build");
+    size_t verts = 0, tris = 0;
+    for (auto& g : groups) { verts += g.pos.size() / 3; tris += g.tris.size() / 3; }
+    LOGI("dynamic mesh built: %zu vertices, %zu triangles, %zu material IDs, %s normals, MikkT tangents", verts, tris,
+         groups.size(), haveNormals ? "OBJ" : "computed");
+    return dyn;
+}
+
+// Writes a UDynamicMesh into a new UStaticMesh. Geometry Scripting only supports this in the editor
+// in this build (it reports failure at runtime), so callers fall back.
+static UObject* CopyToStaticMesh(UObject* dyn, const std::vector<UObject*>& mats, const std::vector<std::string>& slots) {
+    UObject* smLib = Lib("GeometryScriptLibrary_StaticMeshFunctions");
+    UObject* mesh = smLib ? NewObject(FindClass("StaticMesh"), WorldContext()) : nullptr;
+    if (!mesh) return nullptr;
+    std::vector<uint64_t> slotNames;
+    for (auto& s : slots) slotNames.push_back(MakeName(s));
+    Params cp(smLib, "CopyMeshToStaticMesh");
+    UStruct* os = ParamStruct(cp.fn, "Options");
+    uint8_t* opt = (uint8_t*)cp.Ptr("Options");
+    if (!os || !opt) return nullptr;
+    *(bool*)(opt + FieldOffset(os, "bReplaceMaterials")) = true;
+    SetArray(opt, os, "NewMaterials", (void*)mats.data(), (int)mats.size());
+    SetArray(opt, os, "NewMaterialSlotNames", slotNames.data(), (int)slotNames.size());
+    UObject* dbg = GsDebug();
+    if (void* dp = cp.Ptr("Debug")) *(UObject**)dp = dbg;
+    cp.Set(0, dyn);
+    cp.Set(1, mesh);
+    cp.Call();
+    uint8_t outcome = cp.Ptr("Outcome") ? *(uint8_t*)cp.Ptr("Outcome") : 0;
+    if (outcome != 1) {
+        LogGsDebug(dbg, "CopyMeshToStaticMesh");
+        return nullptr;
+    }
+    KeepAlive(mesh);
+    return mesh;
+}
+
+// ------------------------------------------------------------------ mesh build: MeshDescription (fallback)
 
 // Pre-resolved argument slots so the per-vertex loop is just memcpy + ProcessEvent.
 struct Call1 {
@@ -187,6 +343,30 @@ GUObject* ImportStaticMesh(const wchar_t* file, const GML_MeshImport* optsIn) {
         out[1] = y * scale + opts.offset[1];
         out[2] = z * scale + opts.offset[2];
     };
+
+    {
+        UObject* fb = opts.defaultMaterial;
+        if (!fb) fb = LoadObject("/Engine/EngineMaterials/DefaultMaterial.DefaultMaterial", false);
+        std::vector<UObject*> mats;
+        std::vector<std::string> slots;
+        for (auto& g : d.groups) {
+            UObject* m = fb;
+            for (int i = 0; i < opts.materialCount; i++)
+                if (opts.materialNames && opts.materialNames[i] && g == opts.materialNames[i] && opts.materials[i])
+                    m = opts.materials[i];
+            mats.push_back(m);
+            slots.push_back(g);
+        }
+        std::vector<int> ids;
+        for (size_t i = 0; i < d.groups.size(); i++) ids.push_back((int)i);
+        UObject* dyn = BuildDynamicMesh(d, toUE, opts.axis == GML_AXIS_BLENDER_OBJ, flip, ids);
+        if (UObject* mesh = dyn ? CopyToStaticMesh(dyn, mats, slots) : nullptr) {
+            LOGI("ImportStaticMesh %s -> %s (Geometry Scripting)", fname.c_str(), FullName(mesh).c_str());
+            return mesh;
+        }
+        LOGW("ImportStaticMesh: falling back to the MeshDescription build, which has no usable normals in this "
+             "build and renders dark - prefer ImportDynamicMesh + AddDynamicMeshComponent");
+    }
 
     UClass* smClass = FindClass("StaticMesh");
     UObject* mesh = NewObject(smClass, WorldContext());
@@ -299,6 +479,98 @@ GUObject* ImportStaticMesh(const wchar_t* file, const GML_MeshImport* optsIn) {
     LOGI("ImportStaticMesh %s -> %s (%zu vertices, %zu instances)", fname.c_str(), FullName(mesh).c_str(),
          vertOf.size(), instOf.size());
     return mesh;
+}
+
+// ------------------------------------------------------------------ dynamic meshes (the working path)
+
+// OBJ -> UDynamicMesh. Material ID i corresponds to opts->materialNames[i]; groups not listed get
+// IDs after those, in first-use order. Pair with AddDynamicMeshComponent to render it.
+GUObject* ImportDynamicMesh(const wchar_t* file, const GML_MeshImport* optsIn) {
+    if (!OnGameThread("ImportDynamicMesh") || !file) return nullptr;
+    GML_MeshImport opts{};
+    opts.size = sizeof opts;
+    opts.flipWinding = -1;
+    if (optsIn) memcpy(&opts, optsIn, optsIn->size < sizeof opts ? optsIn->size : sizeof opts);
+    const std::string fname = Narrow(file);
+    ObjData d;
+    std::string err;
+    if (!ParseObj(file, d, err)) { LOGE("ImportDynamicMesh %s: %s", fname.c_str(), err.c_str()); return nullptr; }
+    const float scale = opts.scale != 0 ? opts.scale : (opts.axis == GML_AXIS_BLENDER_OBJ ? 100.f : 1.f);
+    const bool swapYZ = opts.axis == GML_AXIS_BLENDER_OBJ;
+    auto toUE = [&](const float* p, double out[3]) {
+        double x = p[0], y = p[1], z = p[2];
+        if (swapYZ) std::swap(y, z);  // OBJ(x,y,z) -> UE(x,z,y)
+        out[0] = x * scale + opts.offset[0];
+        out[1] = y * scale + opts.offset[1];
+        out[2] = z * scale + opts.offset[2];
+    };
+    std::vector<int> ids;
+    int next = opts.materialCount;
+    for (auto& g : d.groups) {
+        int id = -1;
+        for (int i = 0; i < opts.materialCount && id < 0; i++)
+            if (opts.materialNames && opts.materialNames[i] && g == opts.materialNames[i]) id = i;
+        ids.push_back(id >= 0 ? id : next++);
+    }
+    UObject* dyn = BuildDynamicMesh(d, toUE, swapYZ, opts.flipWinding == 1, ids);
+    LOGI("ImportDynamicMesh %s -> %s", fname.c_str(), dyn ? FullName(dyn).c_str() : "FAILED");
+    return dyn;
+}
+
+// Adds a UDynamicMeshComponent to `actor` (attached to its root), gives it a copy of `mesh`, the
+// materials by material ID, externally-provided (MikkT) tangents and no collision.
+GUObject* AddDynamicMeshComponent(GUObject* actor, GUObject* mesh, GUObject* const* materials, int count) {
+    if (!OnGameThread("AddDynamicMeshComponent") || !actor || !mesh) return nullptr;
+    UClass* compClass = FindClass("DynamicMeshComponent");
+    if (!compClass) { LOGE("DynamicMeshComponent is not available in this build"); return nullptr; }
+
+    Params mt(Lib("KismetMathLibrary"), "MakeTransform");  // identity, built by the engine
+    double one[3] = {1, 1, 1};
+    if (void* s = mt.Ptr("Scale")) memcpy(s, one, sizeof one);
+    mt.Call();
+
+    Params add(actor, "AddComponentByClass");
+    *(UClass**)add.Ptr("Class") = compClass;
+    *(bool*)add.Ptr("bManualAttachment") = false;
+    memcpy(add.Ptr("RelativeTransform"), mt.Ret(), mt.RetSize());
+    *(bool*)add.Ptr("bDeferredFinish") = false;
+    add.Call(true);
+    UObject* comp = add.RetAs<UObject*>();
+    if (!comp) { LOGE("AddDynamicMeshComponent: AddComponentByClass failed on %s", FullName(actor).c_str()); return nullptr; }
+
+    if (FProperty* tp = FindProperty((UStruct*)ClassOf(comp), "TangentsType"))
+        *((uint8_t*)comp + PropOffset(tp)) = 2;  // ExternallyProvided: the MikkT tangents computed at import
+
+    Params gm(comp, "GetDynamicMesh");
+    gm.Call();
+    UObject* target = gm.RetAs<UObject*>();
+    Params ap(Lib("GeometryScriptLibrary_MeshBasicEditFunctions"), "AppendMesh");
+    ap.Set(0, target);
+    ap.Set(1, mesh);
+    memcpy(ap.Ptr("AppendTransform"), mt.Ret(), mt.RetSize());  // AppendOptions zeroed = keep all attributes
+    ap.Call();
+
+    std::vector<UObject*> mats(materials, materials + (count > 0 ? count : 0));
+    Params cm(comp, "ConfigureMaterialSet");
+    *(GML_TArray*)cm.Ptr("NewMaterialSet") = GML_TArray{mats.data(), (int32_t)mats.size(), (int32_t)mats.size()};
+    *(bool*)cm.Ptr("bDeleteExtraSlots") = true;
+    cm.Call();
+
+    Params col(comp, "SetCollisionEnabled");
+    col.Set(0, (uint8_t)0);  // NoCollision: rendering only
+    col.Call();
+    Params nm(comp, "NotifyMeshModified");
+    nm.Call();
+    auto triCount = [](UObject* m) {
+        Params tc(m, "GetTriangleCount");
+        tc.Call();
+        return tc.RetAs<int32_t>();
+    };
+    int srcTris = triCount(mesh), dstTris = triCount(target);
+    if (dstTris <= 0) LOGW("AddDynamicMeshComponent: the copy on %s is empty (source %s has %d triangles)",
+                           ObjName(actor).c_str(), FullName(mesh).c_str(), srcTris);
+    LOGI("AddDynamicMeshComponent: %s on %s (%d triangles)", FullName(comp).c_str(), ObjName(actor).c_str(), dstTris);
+    return comp;
 }
 
 }  // namespace gml::assets

@@ -119,6 +119,32 @@ static void RunAssets() {
     Params gm(sm, "GetMaterial");
     gm.Set("MaterialIndex", (int32_t)0).Call();
     Check(gm.Return<GUObject*>() == mid.ptr, "runtime mesh slot 0 uses our material instance");
+
+    // 2.1: the dynamic mesh path (explicit normals + MikkT tangents; the one that renders correctly)
+    if (API->size >= offsetof(GML_API, AddDynamicMeshComponent) + sizeof(void*)) {
+        auto t2 = std::chrono::steady_clock::now();
+        Object dm = API->ImportDynamicMesh(PluginPath(L"test.obj").c_str(), &o);
+        auto dms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t2).count();
+        Params dtc(dm, "GetTriangleCount");
+        dtc.Call();
+        Check(dm.IsA("DynamicMesh") && dtc.Return<int32_t>() > 0, "ImportDynamicMesh(test.obj) -> {} triangles in {} ms",
+              dtc.Return<int32_t>(), dms);
+        Object host = FindFirstOf("GameModeBase");
+        GUObject* mats[] = {mid.ptr};
+        Object comp = host ? Object(API->AddDynamicMeshComponent(host.ptr, dm.ptr, mats, 1)) : Object();
+        int32_t compTris = 0;
+        if (comp) {
+            Params gd(comp, "GetDynamicMesh");
+            gd.Call();
+            Params ct(Object(gd.Return<GUObject*>()), "GetTriangleCount");
+            ct.Call();
+            compTris = ct.Return<int32_t>();
+            Params del(comp, "K2_DestroyComponent");
+            del.SetObj("Object", comp).Call();
+        }
+        Check(comp.IsA("DynamicMeshComponent") && compTris == dtc.Return<int32_t>(),
+              "AddDynamicMeshComponent -> {} with {} triangles", comp.Name(), compTris);
+    }
     (void)t0;
 }
 
@@ -196,7 +222,7 @@ GML_AWAKE() {
             double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_tickStart).count();
             if (secs >= 3.0) {
                 int64_t frames = FrameCount() - frame0;
-                Check(s_ticks > 60 && s_ticks <= frames + 1 && s_ticks >= frames - 2,
+                Check(s_ticks >= 10 && s_ticks <= frames + 1 && s_ticks >= frames - 2,  // once per frame, at any frame rate
                       "TICK once per frame: {} ticks, {} engine frames in {:.1f}s ({:.0f} fps)", s_ticks, frames,
                       secs, frames / secs);
                 s_ticks = -1;

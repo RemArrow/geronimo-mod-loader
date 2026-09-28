@@ -285,13 +285,24 @@ typedef struct GML_API {
 
     /* ---- runtime assets (no cooking, no pak) ---- */
     GUObject* (*ImportTexture)(const wchar_t* file);                   /* [GT] PNG/JPG/BMP/TGA/EXR -> UTexture2D */
-    GUObject* (*ImportStaticMesh)(const wchar_t* objFile, const GML_MeshImport* opts); /* [GT] OBJ -> UStaticMesh */
+    /* [GT] OBJ -> UStaticMesh. Known issue: the runtime static-mesh build has no usable normals in
+     * this game build, so the result renders dark. Use ImportDynamicMesh + AddDynamicMeshComponent. */
+    GUObject* (*ImportStaticMesh)(const wchar_t* objFile, const GML_MeshImport* opts);
     GUObject* (*CreateMaterialInstance)(GUObject* parentMaterial);    /* [GT] -> UMaterialInstanceDynamic */
     int       (*SetMaterialTexture)(GUObject* mid, const char* param, GUObject* texture); /* [GT] */
     int       (*SetMaterialScalar)(GUObject* mid, const char* param, float value);       /* [GT] */
     int       (*SetMaterialVector)(GUObject* mid, const char* param, const float rgba[4]); /* [GT] */
     int       (*ExecConsoleCommand)(const char* command);             /* [GT] */
     GUObject* (*WorldContext)(void);  /* the game instance, usable as WorldContextObject */
+
+    /* ---- added in 2.1 (check api->size before use) ---- */
+    /* [GT] OBJ -> UDynamicMesh (Geometry Scripting) with the OBJ's normals, UV0, MikkT tangents and
+     * material IDs: ID i = opts->materialNames[i]. This is the recommended way to show runtime
+     * geometry: in this build ImportStaticMesh cannot produce usable normals (it renders dark). */
+    GUObject* (*ImportDynamicMesh)(const wchar_t* objFile, const GML_MeshImport* opts);
+    /* [GT] Adds a UDynamicMeshComponent to `actor` (attached to its root at identity), with its own
+     * copy of `dynamicMesh`, materials[i] on material ID i, and no collision. Returns the component. */
+    GUObject* (*AddDynamicMeshComponent)(GUObject* actor, GUObject* dynamicMesh, GUObject* const* materials, int count);
 } GML_API;
 
 #ifdef __cplusplus

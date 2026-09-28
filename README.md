@@ -222,22 +222,36 @@ matches them without the suffix.
 ### Runtime assets
 
 ```cpp
-GUObject* tex = API->ImportTexture(PluginPath(L"Assets\\basecolor.png").c_str());
-GUObject* mat = API->CreateMaterialInstance(someGameMaterial);
-API->SetMaterialTexture(mat, "BaseColor", tex);
+// Textures: loose PNG/JPG -> UTexture2D, fed into an instance of a game material.
+GUObject* shader = API->LoadObject("/Game/Art/Common/M_DefaultShader.M_DefaultShader");  // the weapon shader
+GUObject* mat = API->CreateMaterialInstance(shader);
+API->SetMaterialTexture(mat, "Diffuse", API->ImportTexture(PluginPath(L"Assets\\Body_Diffuse.png").c_str()));
 
+// Geometry: OBJ -> UDynamicMesh (the OBJ's normals, UVs, MikkT tangents), rendered by a component.
+const char* groups[] = {"MI_Body"};      // OBJ `usemtl` name -> material ID 0
+GUObject* mats[] = {mat};
 GML_MeshImport o{sizeof o};
-o.axis = GML_AXIS_BLENDER_OBJ;          // Blender's default OBJ export, metres -> cm
-o.defaultMaterial = mat;
-GUObject* mesh = API->ImportStaticMesh(PluginPath(L"Assets\\thing.obj").c_str(), &o);
+o.axis = GML_AXIS_BLENDER_OBJ;           // Blender's default OBJ export, metres -> cm
+o.offset[0] = 2.0f;                      // cm, applied after the axis conversion
+o.materialCount = 1; o.materialNames = groups; o.materials = mats;
+GUObject* mesh = API->ImportDynamicMesh(PluginPath(L"Assets\\thing.obj").c_str(), &o);
+API->AddDynamicMeshComponent(someActor, mesh, mats, 1);   // attached to the actor's root
 ```
 
+- **Use `ImportDynamicMesh` + `AddDynamicMeshComponent`** (added in 2.1). They build the mesh with
+  Geometry Scripting, which ships in the game, and keep the OBJ's own normals plus MikkT tangents
+  for normal maps. Verified in-game: a 30k-triangle rifle with full PBR textures renders correctly
+  on a spawned gun.
+- `ImportStaticMesh` produces a real `UStaticMesh`, but the runtime static-mesh build in this game
+  build can't set normals or tangents, so it renders **dark**. Geometry Scripting's
+  `CopyMeshToStaticMesh` is editor-only here. Keep it for collision or bounds use only.
+- **Textures:** the game's weapon material is `M_DefaultShader`, with `Diffuse`, `Normal` and `ORM`
+  (R = AO, G = roughness, B = metallic) parameters. Loose PNGs import as **sRGB**, so bake linear
+  data (normal maps, ORM) through the sRGB curve before saving, and the GPU hands the shader the
+  original values. Imported textures are uncompressed and have no mipmaps, so keep them ≤ 2K.
 - **OBJ from Blender:** File → Export → Wavefront, default axes (forward −Z, up Y).
   `GML_AXIS_BLENDER_OBJ` then applies the same transform as UE's FBX import (Y negated, ×100).
-  Checked: a 30k-triangle rifle comes out with bounds identical to the UE-editor import of the
-  same geometry.
-- `usemtl` groups become material slots; map them to materials with `materials`/`materialNames`.
-- Positions are split by normal, so hard edges survive the build's normal computation.
+- `usemtl` groups become material IDs/slots; map them to materials with `materials`/`materialNames`.
 - Imported objects are kept alive automatically (added to `GameInstance.ReferencedObjects`).
   Anything you create yourself with `NewObject` that nothing references: call `KeepAlive`.
 - If a mesh renders inside-out, set `flipWinding = 1`.
@@ -342,5 +356,5 @@ the UE 5.7.4 struct layouts in [`src/ue.h`](src/ue.h).
 - Inline hooks installed after startup patch 5 bytes non-atomically. That's safe in a patcher
   (single thread, before the engine), so install native hooks there when possible.
 - The runtime OBJ importer has no vertex colours and uses only the first UV channel.
-- Runtime-built meshes are verified numerically (render data, bounds, material slots) but their
-  shading hasn't been reviewed in a headset yet.
+- `ImportStaticMesh` renders dark (no usable normals from the runtime static-mesh build); use
+  `ImportDynamicMesh` + `AddDynamicMeshComponent`.

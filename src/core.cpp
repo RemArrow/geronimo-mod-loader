@@ -18,6 +18,8 @@ int SetMaterialTexture(GUObject*, const char*, GUObject*);
 int SetMaterialScalar(GUObject*, const char*, float);
 int SetMaterialVector(GUObject*, const char*, const float*);
 int ExecConsoleCommand(const char*);
+GUObject* ImportDynamicMesh(const wchar_t*, const GML_MeshImport*);
+GUObject* AddDynamicMeshComponent(GUObject*, GUObject*, GUObject* const*, int);
 }  // namespace assets
 
 Config    g_cfg;
@@ -332,6 +334,8 @@ const GML_API g_api = {
     assets::SetMaterialVector,
     assets::ExecConsoleCommand,
     api::WorldContext_,
+    assets::ImportDynamicMesh,
+    assets::AddDynamicMeshComponent,
 };
 
 }  // namespace gml
