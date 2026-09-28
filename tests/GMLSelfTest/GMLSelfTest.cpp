@@ -3,7 +3,7 @@
 // Put in GML\plugins\GMLSelfTest\ together with:
 //   test.obj   any OBJ (Blender default export axes)
 //   test.png   any PNG
-// Also needs tests\GMLTestPatcher in GML\patchers\, and tests\GMLTestDep and
+// (GMLSelfTest.rc embeds resource.txt into the DLL itself.) Also needs tests\GMLTestPatcher in GML\patchers\, and tests\GMLTestDep and
 // tests\GMLTestMissingDep in their own folders under GML\plugins\.
 // Launch to the main menu, then read GML\LogOutput.log: every check prints PASS/FAIL and the run ends
 // with "SELFTEST COMPLETE pass=N fail=M".
@@ -173,6 +173,44 @@ static std::string Slurp(const std::wstring& path) {
     return s;
 }
 
+// 2.2: resources built into this DLL (GMLSelfTest.rc), and the in-memory imports, which must give
+// what the file imports give.
+static void RunEmbedded() {
+    if (API->size < offsetof(GML_API, ImportDynamicMeshFromMemory) + sizeof(void*)) return;
+    Blob r = Resource("SELFTEST_TEXT");
+    std::string text = r ? std::string((const char*)r.data, r.size) : "";
+    Check(text == "GML embedded resource OK", "PluginResource(SELFTEST_TEXT) -> '{}' ({} bytes)", text, r.size);
+    Check(!Resource("NO_SUCH_RESOURCE"), "PluginResource of a missing name -> NULL");
+
+    std::string png = Slurp(PluginPath(L"test.png"));
+    Object ft = API->ImportTexture(PluginPath(L"test.png").c_str());
+    Object mt = API->ImportTextureFromMemory(png.data(), png.size(), "test.png");
+    auto width = [](Object t) {
+        if (!t) return -1;
+        Params p(t, "Blueprint_GetSizeX");
+        p.Call();
+        return p.Return<int32_t>();
+    };
+    Check(mt.IsA("Texture2D") && width(mt) == width(ft) && width(mt) > 0,
+          "ImportTextureFromMemory({} bytes) -> {} width={} (file import: {})", png.size(), mt.FullName(), width(mt), width(ft));
+
+    std::string obj = Slurp(PluginPath(L"test.obj"));
+    GML_MeshImport o{};
+    o.size = sizeof o;
+    o.axis = GML_AXIS_BLENDER_OBJ;
+    o.flipWinding = -1;
+    auto tris = [](Object m) {
+        if (!m) return -1;
+        Params p(m, "GetTriangleCount");
+        p.Call();
+        return p.Return<int32_t>();
+    };
+    Object fm = API->ImportDynamicMesh(PluginPath(L"test.obj").c_str(), &o);
+    Object mm = API->ImportDynamicMeshFromMemory(obj.data(), obj.size(), "test.obj", &o);
+    Check(mm.IsA("DynamicMesh") && tris(mm) == tris(fm) && tris(mm) > 0,
+          "ImportDynamicMeshFromMemory({} bytes) -> {} triangles (file import: {})", obj.size(), tris(mm), tris(fm));
+}
+
 GML_AWAKE() {
     Check(API->version == GML_API_VERSION && API->size == sizeof(GML_API), "API table v{} size {}", API->version, API->size);
     Check(API->UEReady() && API->IsGameThread(), "Awake runs on the game thread with the engine up");
@@ -213,6 +251,7 @@ GML_AWAKE() {
         Log("---- self-test on {} ----", Object((GUObject*)gm).FullName());
         RunReflection();
         RunAssets();
+        RunEmbedded();
         Check(beginPlays > 0, "\"*:ReceiveBeginPlay\" wildcard hook fired {} times", beginPlays);
         s_tickStart = std::chrono::steady_clock::now();
         static int64_t frame0 = FrameCount();

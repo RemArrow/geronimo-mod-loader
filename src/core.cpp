@@ -20,6 +20,8 @@ int SetMaterialVector(GUObject*, const char*, const float*);
 int ExecConsoleCommand(const char*);
 GUObject* ImportDynamicMesh(const wchar_t*, const GML_MeshImport*);
 GUObject* AddDynamicMeshComponent(GUObject*, GUObject*, GUObject* const*, int);
+GUObject* ImportTextureFromMemory(const void*, size_t, const char*);
+GUObject* ImportDynamicMeshFromMemory(const void*, size_t, const char*, const GML_MeshImport*);
 }  // namespace assets
 
 Config    g_cfg;
@@ -261,6 +263,21 @@ static int MapForEach_(void* m, GFProperty* p, int (*cb)(void*, void*, void*), v
 static void* EngineAlloc_(size_t n) { return GT("EngineAlloc") ? EngineAlloc(n) : nullptr; }
 
 static GUObject* WorldContext_() { return Ready() ? WorldContext() : nullptr; }
+
+// RCDATA resource of the plugin's own DLL. Resource memory lives as long as the module.
+static const void* PluginResource(GML_Plugin* self, const char* name, size_t* size) {
+    if (size) *size = 0;
+    if (!self || !self->module || !name) return nullptr;
+    HRSRC r = FindResourceW(self->module, Widen(name).c_str(), MAKEINTRESOURCEW(10) /* RT_RCDATA */);
+    HGLOBAL h = r ? LoadResource(self->module, r) : nullptr;
+    const void* data = h ? LockResource(h) : nullptr;
+    if (!data) {
+        LOGW("[%s] no embedded resource '%s'", self->name.c_str(), name);
+        return nullptr;
+    }
+    if (size) *size = SizeofResource(self->module, r);
+    return data;
+}
 }  // namespace api
 
 const GML_API g_api = {
@@ -336,6 +353,9 @@ const GML_API g_api = {
     api::WorldContext_,
     assets::ImportDynamicMesh,
     assets::AddDynamicMeshComponent,
+    api::PluginResource,
+    assets::ImportTextureFromMemory,
+    assets::ImportDynamicMeshFromMemory,
 };
 
 }  // namespace gml

@@ -1,0 +1,2 @@
+// Embedded into GMLSelfTest.dll by build.bat (checks GML_API::PluginResource).
+SELFTEST_TEXT RCDATA "resource.txt"

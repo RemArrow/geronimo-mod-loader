@@ -34,7 +34,10 @@ inline GML_Plugin* Self = nullptr;
 inline bool Init(const GML_API* api, GML_Plugin* self) {
     API = api;
     Self = self;
-    return api && api->version >= GML_API_VERSION && api->size >= sizeof(GML_API);
+    if (!api) return false;
+    if (api->version >= GML_API_VERSION && api->size >= sizeof(GML_API)) return true;
+    api->Log(self, GML_LOG_ERROR, "built against a newer GML SDK than the installed loader - update GML");
+    return false;
 }
 
 // ------------------------------------------------------------------ logging (BepInEx levels)
@@ -56,6 +59,20 @@ inline std::wstring PluginPath(const std::wstring& rel = L"") {
     return rel.empty() ? d : d + L"\\" + rel;
 }
 inline std::wstring GetPath(GML_Path which) { return API->GetPath(which); }
+
+// ------------------------------------------------------------------ embedded resources (2.2)
+
+// A file built into the plugin DLL as an RCDATA resource (see GML_API::PluginResource).
+struct Blob {
+    const void* data = nullptr;
+    size_t size = 0;
+    explicit operator bool() const { return data != nullptr; }
+};
+inline Blob Resource(const char* name) {
+    Blob b;
+    b.data = API->PluginResource(Self, name, &b.size);
+    return b;
+}
 
 // ------------------------------------------------------------------ config (like BepInEx ConfigFile)
 

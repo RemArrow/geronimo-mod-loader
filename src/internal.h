@@ -10,7 +10,7 @@
 
 #include "GML/GML.h"
 
-#define GML_VERSION_STRING "2.1.0"
+#define GML_VERSION_STRING "2.2.0"
 
 namespace gml {
 

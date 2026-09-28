@@ -11,8 +11,9 @@ Plugins can:
 - find, load, create and inspect any UObject; read/write properties; call any UFunction,
 - hook any UFunction that goes through `ProcessEvent` (pre/post, by name, with parameter access),
 - inline-hook any native function in the game (patchers can do it before the engine starts),
-- **build assets at runtime from loose files**: OBJ → `UStaticMesh`, PNG/JPG → `UTexture2D`,
-  and dynamic material instances. This needs no UE editor, cooking or pak,
+- **build assets at runtime from loose files or from the plugin DLL itself**: OBJ → `UDynamicMesh`
+  / `UStaticMesh`, PNG/JPG → `UTexture2D`, and dynamic material instances. This needs no UE
+  editor, cooking or pak, and a plugin with embedded assets ships as a single DLL,
 - ship cooked IoStore containers (`.utoc`/`.ucas`/`.pak`), which the loader deploys for them.
 
 **Supported build:** Geronimo on Steam, UE 5.7.4 (CL 51494982), Windows x64. After a game
@@ -259,6 +260,29 @@ API->AddDynamicMeshComponent(someActor, mesh, mats, 1);   // attached to the act
 Runtime assets matter in this game because cooked *new* packages don't register (see
 [Known limitations](#known-limitations)). An asset built at runtime has no package at all.
 
+### Assets inside the plugin DLL (2.2)
+
+A plugin can carry its assets inside its own DLL and ship as one file. List them in a resource
+script named after the plugin. `build.bat` compiles `<Name>.rc` in the plugin's folder into the
+DLL, with paths relative to that folder:
+
+```rc
+// plugins/MyGun/MyGun.rc
+GUN_OBJ       RCDATA "Assets\\gun.obj"
+Body_Diffuse  RCDATA "Assets\\Body_Diffuse.png"
+```
+
+```cpp
+Blob png = Resource("Body_Diffuse");    // bytes inside the loaded DLL; names are case-insensitive
+API->SetMaterialTexture(mat, "Diffuse", API->ImportTextureFromMemory(png.data, png.size, "Body_Diffuse"));
+Blob obj = Resource("GUN_OBJ");
+GUObject* mesh = API->ImportDynamicMeshFromMemory(obj.data, obj.size, "gun.obj", &o);
+```
+
+`ImportTextureFromMemory` and `ImportDynamicMeshFromMemory` behave exactly like the file versions:
+same decoder, same OBJ parser, same results. They also take bytes from anywhere else, such as a
+download or your own container format.
+
 ---
 
 ## Configuration: `GML\config\GML.cfg`
@@ -297,6 +321,7 @@ build.bat package    :: + write the release zips to build\release\
 | `src/` | `GML.dll`: config, log, chainloader, ProcessEvent hook, reflection, hooks, runtime assets |
 | `include/GML/` | the plugin SDK (`GML.h` C API, `GML.hpp` C++20 layer) |
 | `examples/` | example plugins (built, never installed) |
+| `<plugin folder>/<Name>.rc` | optional resource script, compiled into that plugin's DLL (embedded assets) |
 | `tests/` | in-game self-test plugins (built, never installed) |
 | `tools/gmlcheck.cpp` | offline checker for the game exe (see below) |
 

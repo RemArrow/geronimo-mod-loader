@@ -2,7 +2,7 @@
 // without registering packages (which this build refuses for new package IDs). Everything
 // goes through BlueprintCallable engine functions
 // that exist in the shipping build:
-//   KismetRenderingLibrary::ImportFileAsTexture2D     PNG/JPG/... -> UTexture2D
+//   KismetRenderingLibrary::ImportFileAsTexture2D / ImportBufferAsTexture2D   PNG/JPG/... -> UTexture2D
 //   StaticMesh::CreateStaticMeshDescription + MeshDescription API + BuildFromStaticMeshDescriptions
 //   KismetMaterialLibrary::CreateDynamicMaterialInstance
 #include "ue.h"
@@ -37,6 +37,21 @@ GUObject* ImportTexture(const wchar_t* file) {
     UObject* tex = p.Call() ? p.RetAs<UObject*>() : nullptr;
     if (tex) KeepAlive(tex);
     LOGI("ImportTexture %s -> %s", Narrow(file).c_str(), tex ? FullName(tex).c_str() : "FAILED");
+    return tex;
+}
+
+// Same decoder as ImportTexture (ImportFileAsTexture2D reads the file and calls this).
+GUObject* ImportTextureFromMemory(const void* data, size_t size, const char* name) {
+    if (!OnGameThread("ImportTextureFromMemory") || !data || !size) return nullptr;
+    const char* label = name ? name : "<memory>";
+    if (size > 0x7fffffff) { LOGE("ImportTextureFromMemory %s: %zu bytes is too large", label, size); return nullptr; }
+    Params p(Lib("KismetRenderingLibrary"), "ImportBufferAsTexture2D");
+    if (p.ArgSize(1) != sizeof(GML_TArray)) { LOGE("ImportBufferAsTexture2D has an unexpected signature"); return nullptr; }
+    p.Set(0, WorldContext());
+    *(GML_TArray*)p.Arg(1) =GML_TArray{(void*)data, (int32_t)size, (int32_t)size};  // read-only input: our memory
+    UObject* tex = p.Call() ? p.RetAs<UObject*>() : nullptr;
+    if (tex) KeepAlive(tex);
+    LOGI("ImportTextureFromMemory %s (%zu bytes) -> %s", label, size, tex ? FullName(tex).c_str() : "FAILED");
     return tex;
 }
 
@@ -95,9 +110,7 @@ struct ObjData {
     std::vector<std::string> groups; // material names in first-use order
 };
 
-static bool ParseObj(const std::wstring& path, ObjData& d, std::string& err) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) { err = "cannot open file"; return false; }
+static bool ParseObj(std::istream& f, ObjData& d, std::string& err) {
     std::unordered_map<std::string, int> groupIdx;
     int cur = -1;
     auto useGroup = [&](const std::string& n) {
@@ -152,6 +165,20 @@ static bool ParseObj(const std::wstring& path, ObjData& d, std::string& err) {
     if (d.tris.empty()) { err = "no faces"; return false; }
     return true;
 }
+
+static bool ParseObj(const std::wstring& path, ObjData& d, std::string& err) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) { err = "cannot open file"; return false; }
+    return ParseObj(f, d, err);
+}
+
+// Read-only istream over a block of memory (an embedded resource), without copying it.
+struct MemBuf : std::streambuf {
+    MemBuf(const void* p, size_t n) {
+        char* b = (char*)p;  // get area only: never written through
+        setg(b, b, b + n);
+    }
+};
 
 // ------------------------------------------------------------------ mesh build: Geometry Scripting
 
@@ -485,16 +512,14 @@ GUObject* ImportStaticMesh(const wchar_t* file, const GML_MeshImport* optsIn) {
 
 // OBJ -> UDynamicMesh. Material ID i corresponds to opts->materialNames[i]; groups not listed get
 // IDs after those, in first-use order. Pair with AddDynamicMeshComponent to render it.
-GUObject* ImportDynamicMesh(const wchar_t* file, const GML_MeshImport* optsIn) {
-    if (!OnGameThread("ImportDynamicMesh") || !file) return nullptr;
+static UObject* DynamicMeshFromObj(std::istream& in, const std::string& fname, const GML_MeshImport* optsIn) {
     GML_MeshImport opts{};
     opts.size = sizeof opts;
     opts.flipWinding = -1;
     if (optsIn) memcpy(&opts, optsIn, optsIn->size < sizeof opts ? optsIn->size : sizeof opts);
-    const std::string fname = Narrow(file);
     ObjData d;
     std::string err;
-    if (!ParseObj(file, d, err)) { LOGE("ImportDynamicMesh %s: %s", fname.c_str(), err.c_str()); return nullptr; }
+    if (!ParseObj(in, d, err)) { LOGE("ImportDynamicMesh %s: %s", fname.c_str(), err.c_str()); return nullptr; }
     const float scale = opts.scale != 0 ? opts.scale : (opts.axis == GML_AXIS_BLENDER_OBJ ? 100.f : 1.f);
     const bool swapYZ = opts.axis == GML_AXIS_BLENDER_OBJ;
     auto toUE = [&](const float* p, double out[3]) {
@@ -515,6 +540,20 @@ GUObject* ImportDynamicMesh(const wchar_t* file, const GML_MeshImport* optsIn) {
     UObject* dyn = BuildDynamicMesh(d, toUE, swapYZ, opts.flipWinding == 1, ids);
     LOGI("ImportDynamicMesh %s -> %s", fname.c_str(), dyn ? FullName(dyn).c_str() : "FAILED");
     return dyn;
+}
+
+GUObject* ImportDynamicMesh(const wchar_t* file, const GML_MeshImport* opts) {
+    if (!OnGameThread("ImportDynamicMesh") || !file) return nullptr;
+    std::ifstream f(file, std::ios::binary);
+    if (!f) { LOGE("ImportDynamicMesh %s: cannot open file", Narrow(file).c_str()); return nullptr; }
+    return DynamicMeshFromObj(f, Narrow(file), opts);
+}
+
+GUObject* ImportDynamicMeshFromMemory(const void* objText, size_t size, const char* name, const GML_MeshImport* opts) {
+    if (!OnGameThread("ImportDynamicMeshFromMemory") || !objText || !size) return nullptr;
+    MemBuf buf(objText, size);
+    std::istream in(&buf);
+    return DynamicMeshFromObj(in, name ? name : "<memory>", opts);
 }
 
 // Adds a UDynamicMeshComponent to `actor` (attached to its root), gives it a copy of `mesh`, the

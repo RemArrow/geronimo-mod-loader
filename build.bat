@@ -46,21 +46,21 @@ cl %CFLAGS% /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%ROOT%tools\gmlcheck.cpp" "%ROOT%
 echo === plugins
 if exist "%ROOT%plugins" for /d %%M in ("%ROOT%plugins\*") do (
   if not exist "%G%\GML\plugins\%%~nxM" mkdir "%G%\GML\plugins\%%~nxM"
-  cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%%M\*.cpp" /Fe"%G%\GML\plugins\%%~nxM\%%~nxM.dll" /link %LFLAGS% || exit /b 1
+  call :compile "%%M" "%G%\GML\plugins\%%~nxM\%%~nxM.dll" || exit /b 1
   if exist "%%M\Paks" robocopy "%%M\Paks" "%G%\GML\plugins\%%~nxM\Paks" /MIR /NJH /NJS /NFL /NDL /NP >nul
   if exist "%%M\Assets" robocopy "%%M\Assets" "%G%\GML\plugins\%%~nxM\Assets" /MIR /NJH /NJS /NFL /NDL /NP >nul
 )
 
 echo === patchers
 if exist "%ROOT%patchers" for /d %%M in ("%ROOT%patchers\*") do (
-  cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%%M\*.cpp" /Fe"%G%\GML\patchers\%%~nxM.dll" /link %LFLAGS% || exit /b 1
+  call :compile "%%M" "%G%\GML\patchers\%%~nxM.dll" || exit /b 1
 )
 
 for %%K in (examples tests) do (
   echo === %%K ^(built, never installed^)
   for /d %%M in ("%ROOT%%%K\*") do (
     if not exist "%OUT%\%%K\%%~nxM" mkdir "%OUT%\%%K\%%~nxM"
-    cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%%M\*.cpp" /Fe"%OUT%\%%K\%%~nxM\%%~nxM.dll" /link %LFLAGS% || exit /b 1
+    call :compile "%%M" "%OUT%\%%K\%%~nxM\%%~nxM.dll" || exit /b 1
   )
 )
 
@@ -88,4 +88,16 @@ if /i "%1"=="package" (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%package.ps1" || exit /b 1
 )
 echo === done
+exit /b 0
+
+rem A plugin/patcher DLL from the .cpp files in folder %1, written to %2. If the folder has a
+rem resource script named after the DLL (<Name>.rc), it is compiled in: files it lists as RCDATA
+rem ship inside the DLL (GML_API::PluginResource). Paths in it are relative to the folder.
+:compile
+set RES=
+if exist "%~1\%~n2.rc" (
+  rc /nologo /I "%~1" /fo"%OUT%\obj\%~n2.res" "%~1\%~n2.rc" || exit /b 1
+  set RES="%OUT%\obj\%~n2.res"
+)
+cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%~1\*.cpp" %RES% /Fe"%~2" /link %LFLAGS% || exit /b 1
 exit /b 0

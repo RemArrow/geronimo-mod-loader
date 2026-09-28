@@ -303,6 +303,16 @@ typedef struct GML_API {
     /* [GT] Adds a UDynamicMeshComponent to `actor` (attached to its root at identity), with its own
      * copy of `dynamicMesh`, materials[i] on material ID i, and no collision. Returns the component. */
     GUObject* (*AddDynamicMeshComponent)(GUObject* actor, GUObject* dynamicMesh, GUObject* const* materials, int count);
+
+    /* ---- added in 2.2 (check api->size before use) ---- */
+    /* Assets built into the plugin's own DLL, so it ships as one file. A resource script
+     * (`BODY_DIFFUSE RCDATA "Assets\\Body_Diffuse.png"`) linked into the DLL embeds them;
+     * this returns resource `name`'s bytes (valid while the plugin is loaded) or NULL. */
+    const void* (*PluginResource)(GML_Plugin* self, const char* name, size_t* size);
+    /* [GT] As ImportTexture, from an encoded image (PNG/JPG/BMP/TGA/EXR) in memory. `name` labels logs. */
+    GUObject* (*ImportTextureFromMemory)(const void* data, size_t size, const char* name);
+    /* [GT] As ImportDynamicMesh, from OBJ text in memory. `name` labels logs. */
+    GUObject* (*ImportDynamicMeshFromMemory)(const void* objText, size_t size, const char* name, const GML_MeshImport* opts);
 } GML_API;
 
 #ifdef __cplusplus
