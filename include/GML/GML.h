@@ -141,6 +141,36 @@ typedef enum GML_ConfigType {  /* written to the .cfg as BepInEx's type names */
     GML_CONFIG_STRING      /* String */
 } GML_ConfigType;
 
+/* A setting as ConfigGetInfo describes it (2.3). The strings stay valid while the game runs. */
+typedef struct GML_ConfigInfo {
+    uint32_t       size;          /* = sizeof(GML_ConfigInfo) */
+    const char*    section;
+    const char*    key;
+    GML_ConfigType type;
+    const char*    defaultValue;
+    const char*    description;
+} GML_ConfigInfo;
+
+typedef enum GML_PluginStatus {  /* (2.3) */
+    GML_PLUGIN_LOADED = 0,   /* running */
+    GML_PLUGIN_FAULTED,      /* its Awake failed or one of its callbacks raised an exception: its callbacks are off */
+    GML_PLUGIN_PENDING,      /* found, not loaded yet (the engine isn't up) */
+    GML_PLUGIN_SKIPPED,      /* not loaded: a dependency is missing, too old or failed, it is incompatible with
+                                another plugin, a duplicate, or built for a newer GML (the log says which) */
+    GML_PLUGIN_DISABLED      /* its folder holds disabled.txt */
+} GML_PluginStatus;
+
+typedef struct GML_PluginState {  /* (2.3) */
+    uint32_t         size;        /* = sizeof(GML_PluginState) */
+    const char*      guid;
+    const char*      name;
+    const char*      version;
+    const wchar_t*   dir;         /* the folder holding its DLL */
+    GML_PluginStatus status;      /* this launch */
+    int              patcher;     /* 1 for a patcher */
+    int              enabledNext; /* 1 unless disabled.txt is in its folder now: the state from the next launch on */
+} GML_PluginState;
+
 /* ------------------------------------------------------------------ engine data */
 
 /* Describes one reflected property. `type` is the engine's field class name
@@ -313,6 +343,22 @@ typedef struct GML_API {
     GUObject* (*ImportTextureFromMemory)(const void* data, size_t size, const char* name);
     /* [GT] As ImportDynamicMesh, from OBJ text in memory. `name` labels logs. */
     GUObject* (*ImportDynamicMeshFromMemory)(const void* objText, size_t size, const char* name, const GML_MeshImport* opts);
+
+    /* ---- added in 2.3 (check api->size before use) ---- */
+    /* Every plugin the chainloader found (patchers too), in load order, then the ones it did not load.
+     * For mod menus and diagnostics. */
+    int (*PluginCount)(void);
+    int (*GetPluginState)(int index, GML_PluginState* out);  /* 0 if index is out of range */
+    /* Enables or disables a plugin from the next launch on, by removing or creating disabled.txt in its
+     * folder (the chainloader skips folders that hold one). Refused (0) for a DLL directly in
+     * plugins\ or patchers\, which has no folder of its own. */
+    int (*SetPluginEnabled)(const char* guid, int enabled);
+    /* Any plugin's settings, in the order it bound them (for mod menus). Use the ConfigGet... and
+     * ConfigSet functions on the entries; ConfigSet saves the plugin's .cfg, and a plugin that reads
+     * the entry's value again sees the change at once. */
+    int              (*ConfigCount)(const char* guid);
+    GML_ConfigEntry* (*ConfigAt)(const char* guid, int index);
+    int              (*ConfigGetInfo)(GML_ConfigEntry* e, GML_ConfigInfo* out);
 } GML_API;
 
 #ifdef __cplusplus

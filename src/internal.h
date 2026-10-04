@@ -10,7 +10,7 @@
 
 #include "GML/GML.h"
 
-#define GML_VERSION_STRING "2.2.0"
+#define GML_VERSION_STRING "2.3.0"
 
 namespace gml {
 
@@ -41,6 +41,9 @@ int64_t          CfgInt(GML_ConfigEntry* e);
 double           CfgFloat(GML_ConfigEntry* e);
 std::string      CfgString(GML_ConfigEntry* e);
 void             CfgSet(GML_ConfigEntry* e, const char* value);  // saves
+int              CfgCount(CfgFile* f);                       // bound entries, in bind order
+GML_ConfigEntry* CfgAt(CfgFile* f, int index);
+bool             CfgInfo(GML_ConfigEntry* e, GML_ConfigInfo* out);
 
 // ---------------------------------------------------------------- core.cpp
 struct Config {  // GML\config\GML.cfg
@@ -79,6 +82,8 @@ struct GML_Plugin {
     bool           patcher = false;
     bool           loaded = false;     // Awake/Patch returned 0
     bool           faulted = false;    // callbacks disabled (SEH fault or non-zero return)
+    bool           skipped = false;    // not loaded: dependency, incompatibility, duplicate, newer API
+    bool           disabled = false;   // its folder held disabled.txt at launch
     gml::CfgFile*  cfg = nullptr;      // <GUID>.cfg, opened on first ConfigBind
     GML_PluginInfo info{};
 };
@@ -94,6 +99,8 @@ void RunPatchers();          // process entry
 void PrepareChainloader();   // process entry: discover + resolve plugins (no plugin code runs)
 void RunChainloader();       // engine ready: load + Awake in dependency order
 bool IsPluginLoaded(const char* guid);
+const std::vector<GML_Plugin*>& AllPlugins();  // patchers, load order, then skipped and disabled ones
+GML_Plugin* FindPlugin(const char* guid);
 
 // ---------------------------------------------------------------- hook.cpp
 bool HookInstall(void* target, void* detour, void** original, std::string* err = nullptr);

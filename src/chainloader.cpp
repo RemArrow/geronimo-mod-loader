@@ -16,6 +16,8 @@ namespace gml {
 
 static std::vector<GML_Plugin*> s_order;  // resolved plugin load order
 static std::vector<GML_Plugin*> s_patchers;
+static std::vector<GML_Plugin*> s_notLoaded;  // skipped while resolving, or in a disabled folder
+static std::vector<GML_Plugin*> s_all;        // patchers, s_order, s_notLoaded (for GetPluginState)
 
 // ------------------------------------------------------------------ metadata from file
 
@@ -86,10 +88,13 @@ static int CompareVersions(const std::string& a, const std::string& b) {
 
 static std::string Label(const GML_Plugin* p) { return "[" + p->name + " " + p->version + "]"; }
 
-// All DLLs under dir, recursively, skipping folders that contain disabled.txt.
-static void FindDlls(const std::wstring& dir, std::vector<std::wstring>& out) {
-    if (GetFileAttributesW((dir + L"\\disabled.txt").c_str()) != INVALID_FILE_ATTRIBUTES) {
+// All DLLs under dir, recursively. Folders that contain disabled.txt are skipped; their DLLs go to
+// `disabled` instead, if given (so a mod menu can list them and turn them back on).
+static void FindDlls(const std::wstring& dir, std::vector<std::wstring>& out, std::vector<std::wstring>* disabled = nullptr,
+                     bool ignoreDisabled = false) {
+    if (!ignoreDisabled && GetFileAttributesW((dir + L"\\disabled.txt").c_str()) != INVALID_FILE_ATTRIBUTES) {
         LOGI("skipping %s (disabled.txt)", Narrow(dir.substr(g_paths.gmlRoot.size() + 1)).c_str());
+        if (disabled) FindDlls(dir, *disabled, nullptr, true);
         return;
     }
     WIN32_FIND_DATAW fd;
@@ -104,7 +109,7 @@ static void FindDlls(const std::wstring& dir, std::vector<std::wstring>& out) {
     } while (FindNextFileW(h, &fd));
     FindClose(h);
     std::sort(subdirs.begin(), subdirs.end());
-    for (auto& s : subdirs) FindDlls(s, out);
+    for (auto& s : subdirs) FindDlls(s, out, disabled, ignoreDisabled);
 }
 
 static std::wstring DirOf(const std::wstring& p) { return p.substr(0, p.find_last_of(L'\\')); }
@@ -158,8 +163,19 @@ void RunPatchers() {
 // ------------------------------------------------------------------ plugins: resolve
 
 void PrepareChainloader() {
-    std::vector<std::wstring> dlls;
-    FindDlls(g_paths.plugins, dlls);
+    std::vector<std::wstring> dlls, disabled;
+    FindDlls(g_paths.plugins, dlls, &disabled);
+    for (auto& path : disabled) {  // listed (GetPluginState), never loaded
+        DllExports ex;
+        if (!ReadExports(path, ex) || !ex.hasAwake || !ex.hasMetadata || !ex.info.guid[0]) continue;
+        GML_Plugin* p = MakePlugin(path, ex, false);
+        p->disabled = true;
+        s_notLoaded.push_back(p);
+    }
+    auto skip = [](GML_Plugin* p) {
+        p->skipped = true;
+        s_notLoaded.push_back(p);
+    };
 
     std::map<std::string, GML_Plugin*> byGuid;  // one per GUID after de-duplication
     for (auto& path : dlls) {
@@ -177,6 +193,7 @@ void PrepareChainloader() {
         if (p->info.apiVersion > GML_API_VERSION) {
             LOGE("Skipping %s: built for GML API v%u, this loader is v%d", Label(p).c_str(), p->info.apiVersion,
                  GML_API_VERSION);
+            skip(p);
             continue;
         }
         auto it = byGuid.find(p->guid);
@@ -188,6 +205,7 @@ void PrepareChainloader() {
                  cmp == 0 ? "a duplicate with the same GUID" : "a newer version", Narrow(keep->path).c_str(),
                  Narrow(drop->path).c_str());
             it->second = keep;
+            skip(drop);
             continue;
         }
         byGuid[p->guid] = p;
@@ -202,6 +220,7 @@ void PrepareChainloader() {
         if (!clash.empty()) {
             LOGE("Could not load %s because it is incompatible with %s", Label(p).c_str(),
                  Label(byGuid[clash]).c_str());
+            skip(p);
             it = byGuid.erase(it);
         } else ++it;
     }
@@ -220,6 +239,7 @@ void PrepareChainloader() {
             }
             if (!missing.empty()) {
                 LOGE("Could not load %s because it has missing dependencies: %s", Label(p).c_str(), missing.c_str());
+                skip(p);
                 it = byGuid.erase(it);
                 changed = true;
             } else ++it;
@@ -245,7 +265,12 @@ void PrepareChainloader() {
         return ok;
     };
     for (auto& [g, p] : byGuid) visit(p);
+    for (auto& [g, p] : byGuid)
+        if (!done.count(g)) skip(p);  // in a dependency cycle
 
+    s_all = s_patchers;
+    s_all.insert(s_all.end(), s_order.begin(), s_order.end());
+    s_all.insert(s_all.end(), s_notLoaded.begin(), s_notLoaded.end());
     LOGM("Chainloader ready: %zu plugin(s) to load", s_order.size());
 }
 
@@ -259,6 +284,7 @@ void RunChainloader() {
             if (d.guid[0] && !(d.flags & GML_DEPENDENCY_SOFT) && !IsPluginLoaded(d.guid)) failedDep = d.guid;
         if (!failedDep.empty()) {
             LOGE("Skipping %s because its dependency %s failed to load", Label(p).c_str(), failedDep.c_str());
+            p->skipped = true;
             continue;
         }
         LOGI("Loading %s", Label(p).c_str());
@@ -266,6 +292,7 @@ void RunChainloader() {
         auto awake = p->module ? (GML_AwakeFn)GetProcAddress(p->module, "GML_Awake") : nullptr;
         if (!awake) {
             LOGE("%s could not be loaded (error %lu)", Label(p).c_str(), GetLastError());
+            p->faulted = true;
             continue;
         }
         int rc = -1;
@@ -279,6 +306,17 @@ void RunChainloader() {
     }
     size_t ok = std::count_if(s_order.begin(), s_order.end(), [](GML_Plugin* p) { return p->loaded; });
     LOGM("Chainloader startup complete: %zu of %zu plugin(s) loaded", ok, s_order.size());
+}
+
+const std::vector<GML_Plugin*>& AllPlugins() { return s_all; }
+
+GML_Plugin* FindPlugin(const char* guid) {
+    if (!guid) return nullptr;
+    for (GML_Plugin* p : s_all)  // a loaded plugin wins over a skipped duplicate of it
+        if (p->guid == guid && !p->skipped && !p->disabled) return p;
+    for (GML_Plugin* p : s_all)
+        if (p->guid == guid) return p;
+    return nullptr;
 }
 
 bool IsPluginLoaded(const char* guid) {

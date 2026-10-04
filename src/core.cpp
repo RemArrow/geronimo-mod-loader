@@ -41,9 +41,9 @@ GML_Plugin* LoaderSelf() { return &s_self; }
 
 // ------------------------------------------------------------------ SEH guard
 
-static DWORD s_faultCode = 0;
-static int Filter(DWORD code) {
-    s_faultCode = code;
+static EXCEPTION_RECORD s_fault{};
+static int Filter(EXCEPTION_POINTERS* ep) {
+    s_fault = *ep->ExceptionRecord;
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
@@ -51,15 +51,35 @@ static bool GuardedRaw(const std::function<void()>* fn) {
     __try {
         (*fn)();
         return true;
-    } __except (Filter(GetExceptionCode())) {
+    } __except (Filter(GetExceptionInformation())) {
         return false;
     }
 }
 
+// "Module.dll+0x1234" for a code address, so a fault can be found in that module's pdb.
+static std::string Where(const void* addr) {
+    HMODULE m = nullptr;
+    char path[MAX_PATH] = "?";
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)addr, &m))
+        GetModuleFileNameA(m, path, MAX_PATH);
+    const char* name = strrchr(path, '\\') ? strrchr(path, '\\') + 1 : path;
+    char buf[MAX_PATH + 32];
+    snprintf(buf, sizeof buf, "%s+0x%llX", name, (unsigned long long)((const uint8_t*)addr - (const uint8_t*)m));
+    return buf;
+}
+
 bool GuardedCall(GML_Plugin* p, const char* what, const std::function<void()>& fn) {
     if (GuardedRaw(&fn)) return true;
-    LOGE("[%s] %s raised exception 0x%08lX - its callbacks are now disabled", p ? p->name.c_str() : "?", what,
-         s_faultCode);
+    std::string detail = " at " + Where(s_fault.ExceptionAddress);
+    if (s_fault.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && s_fault.NumberParameters >= 2) {
+        char buf[64];
+        snprintf(buf, sizeof buf, " (%s 0x%llX)", s_fault.ExceptionInformation[0] == 1 ? "writing" : "reading",
+                 (unsigned long long)s_fault.ExceptionInformation[1]);
+        detail += buf;
+    }
+    LOGE("[%s] %s raised exception 0x%08lX%s - its callbacks are now disabled", p ? p->name.c_str() : "?", what,
+         s_fault.ExceptionCode, detail.c_str());
     if (p) p->faulted = true;
     return false;
 }
@@ -278,6 +298,66 @@ static const void* PluginResource(GML_Plugin* self, const char* name, size_t* si
     if (size) *size = SizeofResource(self->module, r);
     return data;
 }
+
+// ---- 2.3: plugins and their settings, for mod menus
+
+static int PluginCount() { return (int)AllPlugins().size(); }
+
+static bool HasDisabledTxt(const GML_Plugin* p) {
+    return GetFileAttributesW((p->dir + L"\\disabled.txt").c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+static int GetPluginState(int index, GML_PluginState* out) {
+    auto& all = AllPlugins();
+    if (!out || out->size < sizeof(GML_PluginState) || index < 0 || index >= (int)all.size()) return 0;
+    GML_Plugin* p = all[index];
+    out->guid = p->guid.c_str();
+    out->name = p->name.c_str();
+    out->version = p->version.c_str();
+    out->dir = p->dir.c_str();
+    out->status = p->disabled ? GML_PLUGIN_DISABLED
+                  : p->skipped ? GML_PLUGIN_SKIPPED
+                  : p->faulted ? GML_PLUGIN_FAULTED
+                  : p->loaded  ? GML_PLUGIN_LOADED
+                               : GML_PLUGIN_PENDING;
+    out->patcher = p->patcher ? 1 : 0;
+    out->enabledNext = HasDisabledTxt(p) ? 0 : 1;
+    return 1;
+}
+
+static int SetPluginEnabled(const char* guid, int enabled) {
+    GML_Plugin* p = FindPlugin(guid);
+    if (!p) return 0;
+    // disabled.txt switches off a whole folder: never the plugins\ or patchers\ root itself.
+    if (_wcsicmp(p->dir.c_str(), g_paths.plugins.c_str()) == 0 || _wcsicmp(p->dir.c_str(), g_paths.patchers.c_str()) == 0) {
+        LOGW("%s sits directly in %s - give it a folder of its own to switch it off", p->name.c_str(),
+             Narrow(p->dir.substr(g_paths.gmlRoot.size() + 1)).c_str());
+        return 0;
+    }
+    std::wstring flag = p->dir + L"\\disabled.txt";
+    if (enabled) {
+        if (HasDisabledTxt(p) && !DeleteFileW(flag.c_str())) return 0;
+    } else if (!HasDisabledTxt(p)) {
+        HANDLE f = CreateFileW(flag.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (f == INVALID_HANDLE_VALUE) return 0;
+        const char note[] = "GML skips this folder while this file is here. Delete it to load the plugin again.\r\n";
+        DWORD n = 0;
+        WriteFile(f, note, sizeof note - 1, &n, nullptr);
+        CloseHandle(f);
+    }
+    LOGI("%s %s from the next launch", p->name.c_str(), enabled ? "enabled" : "disabled");
+    return 1;
+}
+
+static int ConfigCount(const char* guid) {
+    GML_Plugin* p = FindPlugin(guid);
+    return p ? CfgCount(p->cfg) : 0;
+}
+static GML_ConfigEntry* ConfigAt(const char* guid, int index) {
+    GML_Plugin* p = FindPlugin(guid);
+    return p ? CfgAt(p->cfg, index) : nullptr;
+}
+static int ConfigGetInfo(GML_ConfigEntry* e, GML_ConfigInfo* out) { return CfgInfo(e, out) ? 1 : 0; }
 }  // namespace api
 
 const GML_API g_api = {
@@ -356,6 +436,12 @@ const GML_API g_api = {
     api::PluginResource,
     assets::ImportTextureFromMemory,
     assets::ImportDynamicMeshFromMemory,
+    api::PluginCount,
+    api::GetPluginState,
+    api::SetPluginEnabled,
+    api::ConfigCount,
+    api::ConfigAt,
+    api::ConfigGetInfo,
 };
 
 }  // namespace gml
@@ -369,5 +455,7 @@ extern "C" __declspec(dllexport) void GML_Bootstrap(unsigned long gameThreadId) 
     gml::g_gameThreadId = gameThreadId;
     gml::g_imageBase = (uintptr_t)GetModuleHandleW(nullptr);
     std::function<void()> init = gml::Init;
-    if (!gml::GuardedRaw(&init)) LOGE("loader init crashed (0x%08lX) - continuing without mods", gml::s_faultCode);
+    if (!gml::GuardedRaw(&init))
+        LOGE("loader init crashed (0x%08lX at %s) - continuing without mods", gml::s_fault.ExceptionCode,
+             gml::Where(gml::s_fault.ExceptionAddress).c_str());
 }

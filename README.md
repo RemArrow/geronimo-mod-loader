@@ -162,6 +162,23 @@ This writes `GML\config\<GUID>.cfg` in BepInEx's format: `##` description, `# Se
 `# Default value`, `Key = value`. Values the user edits survive; descriptions and defaults are
 regenerated. Keys nobody binds any more are kept, as in BepInEx.
 
+### Other plugins and their settings (2.3)
+
+For mod menus and diagnostics:
+
+```cpp
+for (auto& p : gml::Plugins())      // every plugin found: guid, name, version, dir, status, enabledNext
+    Log("{} {} {}", p.name, p.version, p.status == GML_PLUGIN_LOADED ? "running" : "not running");
+API->SetPluginEnabled("com.you.other", 0);           // off from the next launch: disabled.txt in its folder
+for (auto& s : gml::Settings("com.you.other"))       // its bound settings: section, key, type, default, description
+    if (s.key == "Enabled") s.Set("false");          // saves its .cfg; the plugin's own entry sees it at once
+```
+
+The status is `LOADED`, `FAULTED` (Awake failed or a callback crashed), `PENDING`, `SKIPPED`
+(dependency, incompatibility, duplicate, newer API) or `DISABLED` (`disabled.txt` in its folder).
+`SetPluginEnabled` refuses a DLL that sits directly in `plugins\` or `patchers\`, because
+`disabled.txt` there would switch everything off.
+
 ### Paths
 
 `gml::PluginPath(L"Assets\\thing.obj")` resolves against the plugin's own folder.
@@ -354,7 +371,7 @@ the UE 5.7.4 struct layouts in [`src/ue.h`](src/ue.h).
 | `GObjects ... failed validation` | wrong GObjects RVA |
 | `Could not load [X] because it has missing dependencies` | install the dependency (or a new enough version) |
 | `Skipping [X] because a newer version exists` | two copies of one plugin; delete the old one |
-| `[X] ... raised exception 0x...` | that plugin crashed in a callback; its callbacks are disabled, the game continues |
+| `[X] ... raised exception 0x... at Module+0x...` | that plugin crashed in a callback; its callbacks are disabled, the game continues. `Module+0x...` is where it faulted (look it up in that module's `.pdb`); an access violation also says which address was read or written |
 | `must be called on the game thread` | a `[GT]` function was called from the wrong thread. Use `RunOnGameThread` |
 
 **Self-test.** `tests/` holds a self-test plugin and three helpers. To run it:

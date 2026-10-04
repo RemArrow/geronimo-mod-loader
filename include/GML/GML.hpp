@@ -216,6 +216,46 @@ inline std::vector<Object> FindAllOf(const char* cls) {
     if (n) API->FindAllOf(cls, raw.data(), n);
     return {raw.begin(), raw.end()};
 }
+// ---- 2.3: every plugin and its settings (mod menus). Empty with an older loader.
+inline bool HasPluginApi() { return API->size >= offsetof(GML_API, ConfigGetInfo) + sizeof(void*); }
+struct PluginState {
+    std::string guid, name, version;
+    std::wstring dir;
+    GML_PluginStatus status;
+    bool patcher, enabledNext;
+};
+inline std::vector<PluginState> Plugins() {
+    std::vector<PluginState> out;
+    for (int i = 0; HasPluginApi() && i < API->PluginCount(); i++) {
+        GML_PluginState s{};
+        s.size = sizeof s;
+        if (API->GetPluginState(i, &s))
+            out.push_back({s.guid, s.name, s.version, s.dir, s.status, s.patcher != 0, s.enabledNext != 0});
+    }
+    return out;
+}
+struct Setting {
+    GML_ConfigEntry* entry;
+    std::string section, key, defaultValue, description;
+    GML_ConfigType type;
+    std::string Value() const {
+        char buf[1024];
+        int n = API->ConfigGetString(entry, buf, sizeof buf);
+        return std::string(buf, n < (int)sizeof buf ? n : (int)sizeof buf - 1);
+    }
+    void Set(const std::string& v) const { API->ConfigSet(entry, v.c_str()); }
+};
+inline std::vector<Setting> Settings(const char* guid) {
+    std::vector<Setting> out;
+    for (int i = 0; HasPluginApi() && i < API->ConfigCount(guid); i++) {
+        GML_ConfigInfo c{};
+        c.size = sizeof c;
+        GML_ConfigEntry* e = API->ConfigAt(guid, i);
+        if (e && API->ConfigGetInfo(e, &c)) out.push_back({e, c.section, c.key, c.defaultValue, c.description, c.type});
+    }
+    return out;
+}
+
 inline Object LoadObject(const char* path) { return API->LoadObject(path); }
 inline GUClass* LoadClass(const char* path) { return API->LoadClass(path); }
 inline Object NewObject(GUClass* cls, Object outer = {}) { return API->NewObject(cls, outer.ptr); }

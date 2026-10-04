@@ -173,6 +173,41 @@ static std::string Slurp(const std::wstring& path) {
     return s;
 }
 
+// 2.3: the plugin list and any plugin's settings, as a mod menu uses them.
+static void RunPluginApi() {
+    if (!HasPluginApi()) return;
+    std::string me = API->PluginGUID(Self);
+    auto self = [&]() -> PluginState {
+        for (auto& p : Plugins())
+            if (p.guid == me) return p;
+        return {};
+    };
+    auto all = Plugins();
+    PluginState s = self();
+    Check(s.guid == me && s.status == GML_PLUGIN_LOADED && s.enabledNext && !s.patcher,
+          "Plugins() -> {} plugin(s); this one '{}' {} status {}", all.size(), s.name, s.version, (int)s.status);
+    auto settings = Settings(me.c_str());
+    const Setting* count = nullptr;
+    for (auto& st : settings)
+        if (st.section == "General" && st.key == "Count") count = &st;
+    Check(settings.size() >= 5 && count && count->type == GML_CONFIG_INT && count->defaultValue == "42" &&
+              count->description == "An integer setting",
+          "Settings(self) -> {} entries; [General] Count type {} default {}", settings.size(), count ? (int)count->type : -1,
+          count ? count->defaultValue : "?");
+    if (count) {
+        std::string was = count->Value();
+        count->Set("7");
+        bool seen = Config.Bind("General", "Count", 42).Value() == 7;  // the plugin's own entry sees it
+        count->Set(was);
+        Check(seen && count->Value() == was, "Setting::Set from outside -> the plugin reads 7; restored to {}", was);
+    }
+    bool off = API->SetPluginEnabled(me.c_str(), 0) && !self().enabledNext;
+    bool on = API->SetPluginEnabled(me.c_str(), 1) && self().enabledNext;
+    Check(off && on, "SetPluginEnabled: disabled for the next launch ({}), enabled again ({})", off, on);
+    Check(API->ConfigCount("no.such.plugin") == 0 && !API->ConfigAt("no.such.plugin", 0) && !API->SetPluginEnabled("no.such.plugin", 0),
+          "an unknown GUID has no settings and can't be switched");
+}
+
 // 2.2: resources built into this DLL (GMLSelfTest.rc), and the in-memory imports, which must give
 // what the file imports give.
 static void RunEmbedded() {
@@ -252,6 +287,7 @@ GML_AWAKE() {
         RunReflection();
         RunAssets();
         RunEmbedded();
+        RunPluginApi();
         Check(beginPlays > 0, "\"*:ReceiveBeginPlay\" wildcard hook fired {} times", beginPlays);
         s_tickStart = std::chrono::steady_clock::now();
         static int64_t frame0 = FrameCount();

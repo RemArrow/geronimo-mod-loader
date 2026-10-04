@@ -166,6 +166,28 @@ int64_t CfgInt(GML_ConfigEntry* e) { return e ? strtoll(e->value.c_str(), nullpt
 double CfgFloat(GML_ConfigEntry* e) { return e ? strtod(e->value.c_str(), nullptr) : 0.0; }
 std::string CfgString(GML_ConfigEntry* e) { return e ? e->value : ""; }
 
+int CfgCount(CfgFile* f) {
+    if (!f) return 0;
+    std::lock_guard g(f->mtx);
+    return (int)f->bound.size();
+}
+
+GML_ConfigEntry* CfgAt(CfgFile* f, int index) {
+    if (!f) return nullptr;
+    std::lock_guard g(f->mtx);
+    return index >= 0 && index < (int)f->bound.size() ? f->bound[index] : nullptr;
+}
+
+bool CfgInfo(GML_ConfigEntry* e, GML_ConfigInfo* out) {
+    if (!e || !out || out->size < sizeof(GML_ConfigInfo)) return false;
+    out->section = e->section.c_str();  // entries live for the process; these strings never change
+    out->key = e->key.c_str();
+    out->type = e->type;
+    out->defaultValue = e->def.c_str();
+    out->description = e->desc.c_str();
+    return true;
+}
+
 void CfgSet(GML_ConfigEntry* e, const char* value) {
     if (!e || !value) return;
     {
