@@ -10,7 +10,7 @@
     <Nullable>disable</Nullable>
     <AssemblyName>GMLManager</AssemblyName>
     <RootNamespace>GMLManager</RootNamespace>
-    <Version>2.4.0</Version>
+    <Version>2.4.1</Version>
     <Product>GML Manager</Product>
     <Company>RemArrow</Company>
     <Copyright>RemArrow</Copyright>

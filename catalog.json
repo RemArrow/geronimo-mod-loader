@@ -30,6 +30,52 @@
       "asset": "MP7Mag40-*.zip",
       "credits": "Magazine model by Alpooo (CGTrader, Royalty Free License)",
       "tags": ["weapon"]
+    },
+    {
+      "guid": "com.remarrow.fpvdrone",
+      "name": "FPV Drone",
+      "author": "RemArrow",
+      "description": "An FPV kamikaze drone flown through DJI Goggles 2: acro flight model, Betaflight-style OSD and a grenade payload. Goggles in the Night Vision gear, drone in the explosives pouches; hold the right stick in to fly.",
+      "repo": "RemArrow/geronimo-fpv-drone",
+      "asset": "FPVDrone-*.zip",
+      "credits": "Models and textures by 3DMA - 3D Military Assets, used under license",
+      "tags": ["gear", "gameplay"]
+    },
+    {
+      "guid": "com.remarrow.gunsmith",
+      "name": "Gunsmith",
+      "author": "RemArrow",
+      "description": "Every attachment in the gun station changes how the gun handles: weight and balance, recoil, suppressor loudness, muzzle velocity, accuracy and scope glint.",
+      "repo": "RemArrow/geronimo-gunsmith",
+      "asset": "Gunsmith-*.zip",
+      "tags": ["weapon", "gameplay"]
+    },
+    {
+      "guid": "com.remarrow.ecoti",
+      "name": "ECOTI Thermal Fusion",
+      "author": "RemArrow",
+      "description": "GPNVG-18 and PVS-31 with an ECOTI thermal clip-on in every phosphor, and a panoramic fusion goggle with an ATAK-style HUD: compass, team markers, waypoints.",
+      "repo": "RemArrow/geronimo-ecoti",
+      "asset": "ECOTI-*.zip",
+      "tags": ["gear"]
+    },
+    {
+      "guid": "com.remarrow.customcamo",
+      "name": "Custom Camo",
+      "author": "RemArrow",
+      "description": "One more camo, Custom Camo, at the end of the colour menu of every kit item that takes camo.",
+      "repo": "RemArrow/geronimo-custom-camo",
+      "asset": "CustomCamo-*.zip",
+      "tags": ["gear"]
+    },
+    {
+      "guid": "com.remarrow.handposer",
+      "name": "Hand Poser",
+      "author": "RemArrow",
+      "description": "Make your own magazine hand poses: a web page (127.0.0.1:8765) sets where the hand sits and how every finger bends, live, while you hold the magazine.",
+      "repo": "RemArrow/geronimo-hand-poser",
+      "asset": "HandPoser-*.zip",
+      "tags": ["tool"]
     }
   ]
 }

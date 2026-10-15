@@ -228,6 +228,11 @@ namespace GMLManager.Core
                     res.Files.Add(rel);
                     if (rel.Equals("version.dll", StringComparison.OrdinalIgnoreCase) || rel.Equals(@"GML\core\GML.dll", StringComparison.OrdinalIgnoreCase))
                         res.HasLoader = true;
+                    // a released GML.dll replacing a dev build: its old symbols no longer match, and
+                    // they would keep marking the install as a dev build (no auto-updates)
+                    if (rel.Equals(@"GML\core\GML.dll", StringComparison.OrdinalIgnoreCase) &&
+                        !staged.Any(x => x.rel.Equals(@"GML\core\GML.pdb", StringComparison.OrdinalIgnoreCase)))
+                        TryDelete(Path.Combine(root, @"GML\core\GML.pdb"));
                     if (rel.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && (rel.StartsWith(@"GML\plugins\", StringComparison.OrdinalIgnoreCase) || rel.StartsWith(@"GML\patchers\", StringComparison.OrdinalIgnoreCase)))
                     {
                         PluginInfo p = null;
