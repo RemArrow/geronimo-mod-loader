@@ -10,7 +10,7 @@
 
 #include "GML/GML.h"
 
-#define GML_VERSION_STRING "2.3.0"
+#include "version.h"
 
 namespace gml {
 
@@ -51,6 +51,7 @@ struct Config {  // GML\config\GML.cfg
     bool         console = false;
     bool         timestamps = false;
     bool         syncPaks = true;
+    bool         syncMods = true;
     int          tickIntervalMs = 8;  // fallback only; TICK normally follows GFrameCounter
     bool         traceProcessEvent = false;
     uint32_t     rvaGObjects     = 0x09929AE0;
@@ -124,5 +125,9 @@ void Unhook(int id);
 
 // ---------------------------------------------------------------- paks.cpp
 void SyncPluginPaks();
+
+// ---------------------------------------------------------------- mods.cpp
+void SyncPluginMods();
+bool IsModPluginDir(const std::wstring& dir);  // holds <folder name>.uplugin
 
 }  // namespace gml

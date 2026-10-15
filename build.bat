@@ -8,6 +8,7 @@ rem     GML\core\GML.dll               the loader (src)
 rem     GML\plugins\<Name>\<Name>.dll  from plugins\<Name>\ if you keep your own plugins here
 rem     GML\patchers\<Name>.dll        from patchers\<Name>\ likewise
 rem   build\gmlcheck.exe               offline checker (tools)
+rem   build\GMLManager.exe             the installer/updater app (manager), needs the .NET SDK
 rem   build\examples\<Name>\<Name>.dll example plugins (examples) - never installed
 rem   build\tests\<Name>\<Name>.dll    test plugins/patchers (tests) - never installed
 rem
@@ -36,13 +37,23 @@ cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%ROOT%src\doorstop\*.cpp" /Fe
 copy /y "%ROOT%doorstop_config.ini" "%G%\" >nul
 
 echo === core (GML\core\GML.dll)
-cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%ROOT%src\*.cpp" /Fe"%G%\GML\core\GML.dll" ^
+rem GML.rc: the version resource GML Manager reads to tell which loader is installed
+rc /nologo /I "%ROOT%src" /fo"%OUT%\obj\GML.res" "%ROOT%src\GML.rc" || exit /b 1
+cl %CFLAGS% /LD /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%ROOT%src\*.cpp" "%OUT%\obj\GML.res" /Fe"%G%\GML\core\GML.dll" ^
    /link %LFLAGS% /OPT:REF /PDB:"%G%\GML\core\GML.pdb" || exit /b 1
 
 echo === gmlcheck.exe
 cl %CFLAGS% /Fo"%OUT%\obj\\" /Fd"%OUT%\obj\\" "%ROOT%tools\gmlcheck.cpp" "%ROOT%src\hook.cpp" "%ROOT%src\scan.cpp" ^
    /Fe"%OUT%\gmlcheck.exe" /link %LFLAGS% || exit /b 1
 
+echo === GML Manager (build\GMLManager.exe)
+rem its version is the loader's (src\version.h); needs the .NET SDK, skipped without it
+for /f "tokens=3" %%V in ('findstr /c:"define GML_VERSION_STRING" "%ROOT%src\version.h"') do set GMLVER=%%~V
+where dotnet >nul 2>nul || (echo dotnet not found - GML Manager skipped& goto plugins)
+dotnet build "%ROOT%manager\GMLManager.csproj" -c Release -nologo -v q -p:Version=%GMLVER% || exit /b 1
+copy /y "%ROOT%manager\bin\Release\GMLManager.exe" "%OUT%\" >nul || exit /b 1
+
+:plugins
 echo === plugins
 if exist "%ROOT%plugins" for /d %%M in ("%ROOT%plugins\*") do (
   if not exist "%G%\GML\plugins\%%~nxM" mkdir "%G%\GML\plugins\%%~nxM"

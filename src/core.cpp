@@ -106,6 +106,9 @@ static void LoadConfig() {
     g_cfg.syncPaks = CfgBool(b("Paks", "Sync", GML_CONFIG_BOOL, "true",
                                "Copy cooked containers (.utoc/.ucas/.pak) found under plugins\\ into\n"
                                "Content\\Paks\\~GML at launch, so plugins can ship them."));
+    g_cfg.syncMods = CfgBool(b("Mods", "Sync", GML_CONFIG_BOOL, "true",
+                               "Copy Unreal mod plugins (a folder holding <Name>.uplugin) found under plugins\\\n"
+                               "into <game>\\Mods at launch. The engine mounts those itself, new assets included."));
     g_cfg.traceProcessEvent = CfgBool(b("Engine", "TraceProcessEvent", GML_CONFIG_BOOL, "false",
                                         "Log every distinct UFunction that passes through ProcessEvent, once each.\n"
                                         "Use it to find hook targets, then turn it off."));
@@ -156,6 +159,7 @@ static void Init() {
     if (!EventsInit())
         LOGE("engine integration unavailable - patchers run, but plugins (which load at engine start) will not");
     if (g_cfg.syncPaks) SyncPluginPaks();
+    if (g_cfg.syncMods) SyncPluginMods();
     RunPatchers();
     PrepareChainloader();
 }

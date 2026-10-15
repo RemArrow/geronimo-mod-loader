@@ -5,3 +5,5 @@ build/
 *.exp
 *.lib
 .vs/
+manager/bin/
+manager/obj/

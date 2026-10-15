@@ -3,7 +3,7 @@
 // platform file scans Content\Paks. Verified: the engine mounts containers from that subfolder
 // (the game file-locks them and serves their packages). In this build that delivers overrides
 // of existing packages; containers declaring new package IDs mount but those packages do not
-// register (see README "Known limitations").
+// register (see README "Known limitations") - ship new assets as a mod plugin instead (mods.cpp).
 //
 // ~GML is owned by the loader: anything in it that no plugin provides is deleted, so removing
 // or disabling (disabled.txt) a plugin removes its content on the next launch.
@@ -33,6 +33,7 @@ static std::string Rel(const std::wstring& p) { return Narrow(p.substr(g_paths.g
 // file name -> source path
 static void Collect(const std::wstring& dir, std::map<std::wstring, std::wstring>& want) {
     if (GetFileAttributesW((dir + L"\\disabled.txt").c_str()) != INVALID_FILE_ATTRIBUTES) return;
+    if (IsModPluginDir(dir)) return;  // a mod plugin's containers go with it to <game>\Mods (mods.cpp)
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
     if (h == INVALID_HANDLE_VALUE) return;

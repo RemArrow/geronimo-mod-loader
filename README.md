@@ -21,7 +21,60 @@ update, see [After a game update](#after-a-game-update).
 
 ---
 
-## Install
+## GML Manager
+
+The easy way: download **`GMLManager.exe`** from [Releases](../../releases) and run it (put it
+anywhere; it needs nothing else on Windows 10/11). It finds Geronimo through Steam and:
+
+- **installs GML** with one click, and keeps it up to date;
+- **lists your mods**, with switches to turn each one off and on, its settings (every `.cfg` value,
+  with its description and default), its folder, and Remove (to the Recycle Bin, settings kept);
+- **Browse:** installs mods from the [catalog](catalog.json), and updates them;
+- installs any mod **dropped on the window** as a `.zip` or plugin `.dll`;
+- switches **all mods off** for a clean game (`doorstop_config.ini`), and starts the game (**Play**);
+- warns about problems before you launch: missing or too-old dependencies, incompatible mods, the
+  same mod installed twice, a mod that needs a newer GML;
+- **updates itself**, the loader and your mods when it starts (Settings: on by default).
+
+Updates only ever replace what GML Manager installed itself. A loader or plugin you built and copied
+in yourself (a `.pdb` beside it marks a dev build) is never touched: it shows an *Update* button when
+the catalog has a newer release, and asks before replacing it. GML Manager records what it
+installed in `GML\manager.json`, so an update also removes files the new version no longer ships.
+
+**For developers**, the Developer tab has the live `LogOutput.log` (filter, problems only), the
+`GML.cfg` switches (console window, timestamps, Trace ProcessEvent, log level, pak and mod sync),
+flat-screen launch (`-nohmd`) and other launch arguments, and **New plugin project**: a folder with a
+starter plugin, the SDK headers and a `build.bat` that finds Visual Studio and installs the plugin
+into the game (`build.bat install`).
+
+Its own settings, log and downloads are in `%LOCALAPPDATA%\GMLManager\`.
+
+### Getting your mod into the catalog
+
+The Browse tab lists [`catalog.json`](catalog.json). To add your mod, open a pull request with an
+entry:
+
+```jsonc
+{
+  "guid": "com.you.mymod",          // the GML_PLUGIN guid in your DLL (how installs are matched)
+  "name": "My Mod",
+  "author": "you",
+  "description": "One or two sentences.",
+  "repo": "you/my-mod",             // a public GitHub repo
+  "asset": "MyMod-*.zip",           // the release zip's name (wildcards)
+  "credits": "Model by ...",        // optional
+  "minGml": "2.4.0",                // optional
+  "tags": ["weapon"]
+}
+```
+
+Each release of your repo needs a zip laid out like `Binaries\Win64`:
+`GML\plugins\MyMod\MyMod.dll` (plus any `Paks\`, `Mods\` or assets beside it). The newest release
+that isn't a draft or pre-release is offered, and its tag (`v1.2.0` or `1.2.0`) is the version, so
+keep it equal to the version in `GML_PLUGIN`. To try your entry before the pull request, put the
+path or URL of your own `catalog.json` in GML Manager's Settings → Catalog.
+
+## Install by hand
 
 1. Download `GML-<version>.zip` from [Releases](../../releases).
 2. Close the game, then extract the zip into
@@ -31,7 +84,7 @@ update, see [After a game update](#after-a-game-update).
 
 **Disable:** set `enabled = false` in `doorstop_config.ini`.
 **Uninstall:** delete `version.dll`, `doorstop_config.ini`, `GML_INSTALL.txt`, `GML\`, and
-`Geronimo\Content\Paks\~GML\`.
+`Geronimo\Content\Paks\~GML\`, and the folders listed in `Geronimo\Mods\.gml-managed`.
 
 GML coexists with UE4SS: both hook ProcessEvent, and both keep working.
 
@@ -57,6 +110,7 @@ Geronimo\Binaries\Win64\
       MyPlugin\
         MyPlugin.dll
         Paks\*.utoc/.ucas/.pak -> copied to Content\Paks\~GML\ at launch
+        Mods\<Name>\<Name>.uplugin + its Content\Paks\Windows\ -> mirrored to Geronimo\Mods\<Name>\ (2.4)
     LogOutput.log              the log, rewritten every launch
 ```
 
@@ -274,8 +328,22 @@ API->AddDynamicMeshComponent(someActor, mesh, mats, 1);   // attached to the act
   Anything you create yourself with `NewObject` that nothing references: call `KeepAlive`.
 - If a mesh renders inside-out, set `flipWinding = 1`.
 
-Runtime assets matter in this game because cooked *new* packages don't register (see
+Runtime assets matter in this game because cooked *new* packages don't register from `Paks\` (see
 [Known limitations](#known-limitations)). An asset built at runtime has no package at all.
+
+### Unreal mod plugins (2.4)
+
+The engine itself mounts content plugins from `Geronimo\Mods\<Name>\` (a `<Name>.uplugin` with
+`CanContainContent`, cooked into `Content\Paks\Windows\` with its own `AssetRegistry.bin` and mount
+point `/<Name>/`). Their **new** packages do register, and a `GunAsset` in one appears in the gun
+station by itself, because `GetItems` reads the merged asset registry. Verified with a third-party
+RD704 rifle plugin.
+
+Put such a plugin anywhere under your GML plugin's folder (conventionally `Mods\<Name>\`). At launch
+GML mirrors it to `Geronimo\Mods\<Name>\`, before the engine scans that folder. The pak sync leaves its
+containers alone. GML lists the folders it installed in `Geronimo\Mods\.gml-managed` and removes them
+when the plugin is removed or disabled (`disabled.txt`). It never touches a mod you installed there by
+hand, and it won't overwrite one with the same name. Turn it off with `[Mods] Sync = false` in `GML.cfg`.
 
 ### Assets inside the plugin DLL (2.2)
 
@@ -327,10 +395,15 @@ Created with descriptions on first launch.
 Requires Visual Studio 2022 (MSVC, C++20) on Windows x64.
 
 ```bat
-build.bat            :: build into build\  (build\game\ mirrors Binaries\Win64\)
+build.bat            :: build into build\  (build\game\ mirrors Binaries\Win64\, plus build\GMLManager.exe)
 build.bat install    :: + copy into the game; set GML_GAME_DIR if it isn't in the default Steam library
-build.bat package    :: + write the release zips to build\release\
+build.bat package    :: + write the release files to build\release\
 ```
+
+A release attaches all three files from `build\release\`: `GML-<ver>.zip`, `GML-SDK-<ver>.zip` and
+`GMLManager.exe` (that exact name: GML Manager's self-update looks for it). The tag is `v<ver>`.
+The version lives in [`src/version.h`](src/version.h) and goes into both `GML.dll` and
+`GMLManager.exe`.
 
 | Folder | What |
 |---|---|
@@ -341,6 +414,8 @@ build.bat package    :: + write the release zips to build\release\
 | `<plugin folder>/<Name>.rc` | optional resource script, compiled into that plugin's DLL (embedded assets) |
 | `tests/` | in-game self-test plugins (built, never installed) |
 | `tools/gmlcheck.cpp` | offline checker for the game exe (see below) |
+| `manager/` | GML Manager (C#, WPF on .NET Framework 4.8; needs the .NET SDK to build) |
+| `catalog.json` | the mods GML Manager's Browse tab offers (a copy is built into the exe) |
 
 ---
 
@@ -387,9 +462,10 @@ the UE 5.7.4 struct layouts in [`src/ue.h`](src/ue.h).
 
 ## Known limitations
 
-- **New cooked packages don't register in this build.** Containers are mounted (overrides of
+- **New cooked packages don't register from `Paks\`.** Containers there are mounted (overrides of
   existing packages work), but packages with *new* IDs never become loadable. This was proven with
-  retoc-built and engine-built (UAT) containers alike. For new content, use runtime assets.
+  retoc-built and engine-built (UAT) containers alike. For new content, ship an Unreal mod plugin
+  (`Mods\<Name>\`, 2.4) or use runtime assets.
 - **Small intentional leaks.** GML borrows the engine allocator through a reflected call
   (`KismetStringLibrary::LeftPad` returns an engine-allocated buffer), because `FMemory` isn't
   exported. When a TArray grows, the old buffer is not freed, and FStrings returned by engine

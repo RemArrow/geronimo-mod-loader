@@ -1,0 +1,35 @@
+{
+  "_readme": "The mods GML Manager offers in its Browse tab. To list your mod, open a pull request adding an entry. Each mod needs a public GitHub repo whose releases carry a zip laid out like Binaries\\Win64 (GML\\plugins\\<Name>\\...). guid must match the GML_PLUGIN guid in the DLL; asset is a wildcard for the release zip's name.",
+  "version": 1,
+  "mods": [
+    {
+      "guid": "com.remarrow.noveskechainsaw",
+      "name": "Noveske Chainsaw",
+      "author": "RemArrow",
+      "description": "Adds a Noveske Chainsaw rifle to the gun spawner, with its own mesh, moving parts and PMAG. Nothing in the game is replaced.",
+      "repo": "RemArrow/noveske-chainsaw",
+      "asset": "NoveskeChainsaw-*.zip",
+      "credits": "Model and textures by 3DMA - 3D Military Assets, used under license",
+      "tags": ["weapon"]
+    },
+    {
+      "guid": "com.remarrow.malfunctions",
+      "name": "Malfunctions",
+      "author": "RemArrow",
+      "description": "Every gun jams as often as its real counterpart: duds, failures to feed, stovepipes and double feeds, each cleared by hand. The P320 is not drop safe.",
+      "repo": "RemArrow/geronimo-malfunctions",
+      "asset": "Malfunctions-*.zip",
+      "tags": ["gameplay"]
+    },
+    {
+      "guid": "com.remarrow.mp7mag40",
+      "name": "MP7 40-Round Magazine",
+      "author": "RemArrow",
+      "description": "Every MP7 magazine holds 40 rounds and looks like the 40-rounder.",
+      "repo": "RemArrow/geronimo-mp7-40rnd-mag",
+      "asset": "MP7Mag40-*.zip",
+      "credits": "Magazine model by Alpooo (CGTrader, Royalty Free License)",
+      "tags": ["weapon"]
+    }
+  ]
+}

@@ -2,11 +2,13 @@
 # or use `build.bat package`).
 #   GML-<ver>.zip      extract into <game>\Geronimo\Binaries\Win64\
 #   GML-SDK-<ver>.zip  headers + example plugin + gmlcheck, for plugin authors
+#   GMLManager.exe     the installer/updater app; attach it to the release as is (its self-update
+#                      looks for an asset with exactly this name)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $out = Join-Path $root 'build'
-$ver = [regex]::Match((Get-Content (Join-Path $root 'src\internal.h') -Raw), 'GML_VERSION_STRING "([^"]+)"').Groups[1].Value
-if (-not $ver) { throw 'GML_VERSION_STRING not found in src\internal.h' }
+$ver = [regex]::Match((Get-Content (Join-Path $root 'src\version.h') -Raw), 'GML_VERSION_STRING "([^"]+)"').Groups[1].Value
+if (-not $ver) { throw 'GML_VERSION_STRING not found in src\version.h' }
 $rel = Join-Path $out 'release'
 Remove-Item -Recurse -Force $rel -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $rel | Out-Null
@@ -38,7 +40,9 @@ $install = @"
 Geronimo Mod Loader $ver
 https://github.com/RemArrow/geronimo-mod-loader
 
-Install: extract this zip into
+Easiest: GMLManager.exe (same release page) installs and updates GML and mods for you.
+
+Install by hand: extract this zip into
   <Steam library>\steamapps\common\GERONIMO\Geronimo\Binaries\Win64\
 (the folder containing Geronimo-Win64-Shipping.exe). Close the game first.
 
@@ -59,6 +63,14 @@ Stage "GML-$ver" ([ordered]@{
     'GML\patchers\README.txt'  = "Patchers go here: DLLs exporting GML_Patch, run at process entry before the engine starts."
     'GML_INSTALL.txt'          = $install
 })
+
+$manager = Join-Path $out 'GMLManager.exe'
+if (Test-Path $manager) {
+    $mv = (Get-Item $manager).VersionInfo.ProductVersion
+    if ($mv -ne $ver) { throw "GMLManager.exe is $mv, the loader ${ver}: rebuild with build.bat" }
+    Copy-Item $manager $rel
+    Get-Item (Join-Path $rel 'GMLManager.exe')
+} else { Write-Warning 'build\GMLManager.exe missing (no .NET SDK?): the release will have no GML Manager' }
 
 Stage "GML-SDK-$ver" ([ordered]@{
     'include\GML\GML.h'             = Join-Path $root 'include\GML\GML.h'
