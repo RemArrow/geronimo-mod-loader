@@ -133,6 +133,20 @@ static void LoadConfig() {
 
 static std::wstring Parent(const std::wstring& p) { return p.substr(0, p.find_last_of(L"\\/")); }
 
+// "Wine 11.0 on Linux 6.18.58" under Wine/Proton, empty on Windows.
+static std::string WineHost() {
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    auto wineVersion = (const char* (*)())GetProcAddress(ntdll, "wine_get_version");
+    if (!wineVersion) return {};
+    std::string host = std::string("Wine ") + wineVersion();
+    auto hostVersion = (void (*)(const char**, const char**))GetProcAddress(ntdll, "wine_get_host_version");
+    const char* sysname = nullptr;
+    const char* release = nullptr;
+    if (hostVersion) hostVersion(&sysname, &release);
+    if (sysname && release) host += std::string(" on ") + sysname + " " + release;
+    return host;
+}
+
 static void Init() {
     wchar_t exe[MAX_PATH], core[MAX_PATH];
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -155,6 +169,7 @@ static void Init() {
     const wchar_t* exeName = wcsrchr(exe, L'\\');
     LOGM("Geronimo Mod Loader %s - %s", GML_VERSION_STRING, Narrow(exeName ? exeName + 1 : exe).c_str());
     LOGI("Running under Unreal Engine 5.7.4 (CL 51494982), API v%d", GML_API_VERSION);
+    if (std::string wine = WineHost(); !wine.empty()) LOGI("Running under %s", wine.c_str());
 
     if (!EventsInit())
         LOGE("engine integration unavailable - patchers run, but plugins (which load at engine start) will not");

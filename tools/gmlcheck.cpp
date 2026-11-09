@@ -73,7 +73,7 @@ __declspec(noinline) static int Target(int a, int b) {
     return x;
 }
 static int Detour(int a, int b) {
-    s_detourHits++;
+    s_detourHits = s_detourHits + 1;
     return s_orig(a, b) + 1;
 }
 
@@ -142,7 +142,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring ini = argc >= 3 ? argv[2] : L"";
     if (ini.empty()) {
         std::wstring e = exe;
-        ini = e.substr(0, e.find_last_of(L'\\')) + L"\\GML\\config\\GML.cfg";  // BepInEx-format, INI-readable
+        ini = e.substr(0, e.find_last_of(L"\\/")) + L"\\GML\\config\\GML.cfg";  // BepInEx-format, INI-readable
     }
     uintptr_t base = MapImage(exe);
     if (!base) return 2;

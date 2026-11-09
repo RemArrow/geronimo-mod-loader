@@ -16,8 +16,9 @@ Plugins can:
   editor, cooking or pak, and a plugin with embedded assets ships as a single DLL,
 - ship cooked IoStore containers (`.utoc`/`.ucas`/`.pak`), which the loader deploys for them.
 
-**Supported build:** Geronimo on Steam, UE 5.7.4 (CL 51494982), Windows x64. After a game
-update, see [After a game update](#after-a-game-update).
+**Supported build:** Geronimo on Steam, UE 5.7.4 (CL 51494982), Windows x64, and Linux through
+Proton (see [Linux (Proton)](#linux-proton)). After a game update, see
+[After a game update](#after-a-game-update).
 
 ---
 
@@ -91,6 +92,26 @@ GML coexists with UE4SS: both hook ProcessEvent, and both keep working.
 > Starting `Geronimo-Win64-Shipping.exe` directly makes it exit immediately and relaunch
 > through Steam, without your command-line arguments. The second process is the real game, and
 > `LogOutput.log` belongs to it.
+
+### Linux (Proton)
+
+GML runs unchanged inside the game under Proton. Proton loads its own built-in `version.dll`
+unless told otherwise, so the game needs this launch option (Steam → Geronimo → Properties →
+Launch Options):
+
+```
+WINEDLLOVERRIDES="version=n,b" %command%
+```
+
+1. Close the game, then extract the zip into
+   `<Steam library>/steamapps/common/GERONIMO/Geronimo/Binaries/Win64/`. The default library is
+   `~/.local/share/Steam`; with Flatpak Steam it is `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`.
+2. Set the launch option above, and start the game from Steam.
+3. Follow the log with `tail -f GML/LogOutput.log`. Under Proton it names the Wine version
+   (`Running under Wine ...`). The console window (`Logging.Console`) may not appear.
+
+Instead of the launch option, `protontricks 2019620 winecfg` → Libraries → `version` →
+*Native then Builtin* sets the override once for the game's prefix. GML Manager is Windows-only.
 
 ---
 
@@ -400,6 +421,27 @@ build.bat install    :: + copy into the game; set GML_GAME_DIR if it isn't in th
 build.bat package    :: + write the release files to build\release\
 ```
 
+On Linux, `build.sh` builds the same files into the same layout, cross-compiled with clang-cl,
+an LLVM linker and llvm-rc against the MSVC CRT and Windows SDK unpacked by
+[xwin](https://github.com/Jake-Shadle/xwin). One-time setup (Arch shown):
+
+```sh
+sudo pacman -S clang llvm
+cargo install xwin --locked
+xwin --accept-license splat --output ~/.xwin   # run it on the same filesystem as ~/.xwin
+```
+
+The linker is `lld-link`, `lld` or `ld.lld` (`sudo pacman -S lld`) when installed, otherwise the
+`rust-lld` that every rustup toolchain ships.
+
+```sh
+./build.sh            # build into build/
+./build.sh install    # + copy into the game, found through Steam's libraries; or set GML_GAME_DIR
+wine build/gmlcheck.exe <...>/Geronimo/Binaries/Win64/Geronimo-Win64-Shipping.exe
+```
+
+`build.sh` builds neither GML Manager (WPF needs Windows) nor the release files (`build.bat package`).
+
 A release attaches all three files from `build\release\`: `GML-<ver>.zip`, `GML-SDK-<ver>.zip` and
 `GMLManager.exe` (that exact name: GML Manager's self-update looks for it). The tag is `v<ver>`.
 The version lives in [`src/version.h`](src/version.h) and goes into both `GML.dll` and
@@ -441,6 +483,7 @@ the UE 5.7.4 struct layouts in [`src/ue.h`](src/ue.h).
 | You see | Meaning |
 |---|---|
 | no `GML\LogOutput.log` | `version.dll` not in `Binaries\Win64`, `enabled = false`, or wrong `process`. Check for `doorstop_error.log` next to the exe (written if `GML.dll` can't be loaded) |
+| no `GML/LogOutput.log` on Linux | the launch option `WINEDLLOVERRIDES="version=n,b" %command%` is missing, so Proton loaded its own `version.dll`. With `PROTON_LOG=1` in front of it, `~/steam-2019620.log` shows which `version.dll` was loaded |
 | `configured offset verified` ×2, `ProcessEvent hooked` | normal start |
 | `signature scan found 0 candidates` | game updated, see above. Patchers run; plugins don't |
 | `GObjects ... failed validation` | wrong GObjects RVA |
