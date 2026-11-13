@@ -54,9 +54,9 @@ struct Config {  // GML\config\GML.cfg
     bool         syncMods = true;
     int          tickIntervalMs = 8;  // fallback only; TICK normally follows GFrameCounter
     bool         traceProcessEvent = false;
-    uint32_t     rvaGObjects     = 0x09929AE0;
-    uint32_t     rvaAppendString = 0x01334100;
-    uint32_t     rvaProcessEvent = 0x01503A90;
+    uint32_t     rvaGObjects     = 0x09BA58E0;
+    uint32_t     rvaAppendString = 0x01337750;
+    uint32_t     rvaProcessEvent = 0x01507180;
 };
 
 struct Paths {
