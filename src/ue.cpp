@@ -1,6 +1,8 @@
 #include "ue.h"
 #include "signatures.h"
+#include <algorithm>
 #include <unordered_map>
+#include <vector>
 #include <mutex>
 #include <shared_mutex>
 
@@ -80,11 +82,58 @@ static int ProbeGObjects(UObject** first) {
     }
 }
 
+// GUObjectArray.ObjObjects, found from the code that indexes it: every object lookup loads the chunk table with a
+// rip-relative mov and indexes it (mov reg,[rip+X] / mov reg,[reg+reg*8]). The target most of them load is the table.
+// Candidates are returned most-referenced first.
+static std::vector<uint32_t> ScanGObjects() {
+    static const int pats[][16] = {
+        {0x48, 0x8B, 0x05, -1, -1, -1, -1, 0x48, 0x8B, 0x0C, 0xC8, 0x48, 0x8D, 0x04, 0xD1, -2},
+        {0x48, 0x8B, 0x05, -1, -1, -1, -1, 0x4C, 0x8B, 0x04, 0xC8, -2},
+        {0x48, 0x8B, 0x0D, -1, -1, -1, -1, 0x48, 0x8B, 0x0C, 0xC1, -2},
+        {0x4C, 0x8B, 0x05, -1, -1, -1, -1, 0x4D, 0x8B, 0x04, 0xC0, -2},
+    };
+    Section t = TextSection(g_imageBase);
+    std::unordered_map<uint32_t, int> votes;
+    for (auto& p : pats) {
+        int len = 0;
+        while (p[len] != -2) len++;
+        for (size_t i = 0; i + len <= t.size; i++) {
+            int k = 0;
+            for (; k < len; k++) if (p[k] >= 0 && t.base[i + k] != p[k]) break;
+            if (k < len) continue;
+            uint8_t* next = t.base + i + 7;
+            intptr_t target = (intptr_t)(next - (uint8_t*)g_imageBase) + *(int32_t*)(t.base + i + 3);
+            if (target > 0 && target < 0x7FFFFFFF) votes[(uint32_t)target]++;
+        }
+    }
+    std::vector<std::pair<int, uint32_t>> v;
+    for (auto& [rva, n] : votes) v.push_back({n, rva});
+    std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    std::vector<uint32_t> out;
+    for (size_t i = 0; i < v.size() && i < 8; i++) out.push_back(v[i].second);
+    return out;
+}
+
 bool ValidateGObjects() {
     UObject* first = nullptr;
     int r = ProbeGObjects(&first);
     if (r < 0) {
-        LOGE("GObjects at +0x%X failed validation (code %d). Engine features disabled - "
+        uint32_t stale = g_cfg.rvaGObjects;
+        int code = r;
+        for (uint32_t rva : ScanGObjects()) {
+            if (rva == stale) continue;
+            s_gobjects = (uint8_t*)g_imageBase + rva;
+            r = ProbeGObjects(&first);
+            if (r >= 0) {
+                g_cfg.rvaGObjects = rva;
+                LOGW("GObjects: configured +0x%X failed validation (code %d); found it at +0x%X from the code that uses it. "
+                     "Update GML\\config\\GML.cfg [Offsets] GObjects.", stale, code, rva);
+                break;
+            }
+        }
+    }
+    if (r < 0) {
+        LOGE("GObjects at +0x%X failed validation (code %d) and no other candidate validated. Engine features disabled - "
              "re-run Dumper-7 and update GML\\config\\GML.cfg [Offsets] GObjects.", g_cfg.rvaGObjects, r);
         s_gobjects = nullptr;
         return false;
