@@ -76,6 +76,15 @@
       "repo": "RemArrow/geronimo-hand-poser",
       "asset": "HandPoser-*.zip",
       "tags": ["tool"]
+    },
+    {
+      "guid": "com.remarrow.custommaps",
+      "name": "Custom Maps",
+      "author": "RemArrow",
+      "description": "Puts custom maps in the mission menu with a Free Roam mode. Maps are separate downloads on its release page (Myrne, by SpectrumB, with the steps to join its parts).",
+      "repo": "RemArrow/geronimo-custom-maps",
+      "asset": "CustomMaps-*.zip",
+      "tags": ["maps"]
     }
   ]
 }

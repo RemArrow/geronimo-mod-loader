@@ -340,7 +340,9 @@ station by itself, because `GetItems` reads the merged asset registry. Verified 
 RD704 rifle plugin.
 
 Put such a plugin anywhere under your GML plugin's folder (conventionally `Mods\<Name>\`). At launch
-GML mirrors it to `Geronimo\Mods\<Name>\`, before the engine scans that folder. The pak sync leaves its
+GML mirrors it to `Geronimo\Mods\<Name>\`, before the engine scans that folder. Since 2.4.3 the files are
+hard-linked when both folders are on one drive (the usual case), so a multi-GB map takes no extra disk space
+or copy time; on another drive they are copied. The pak sync leaves its
 containers alone. GML lists the folders it installed in `Geronimo\Mods\.gml-managed` and removes them
 when the plugin is removed or disabled (`disabled.txt`). It never touches a mod you installed there by
 hand, and it won't overwrite one with the same name. Turn it off with `[Mods] Sync = false` in `GML.cfg`.

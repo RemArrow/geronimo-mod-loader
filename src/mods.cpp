@@ -5,6 +5,9 @@
 // AssetRegistry.bin, so its NEW packages register - a GunAsset in it even shows up in
 // BP_GameInstance::GetItems on its own. That is not true of containers in Content\Paks (paks.cpp).
 //
+// Files are hard-linked when GML\plugins and Mods share a volume (2.4.3): a mod costs no extra disk space or
+// copy time, which matters for maps of several GB. On another volume they are copied.
+//
 // Only folders the loader put there are managed (listed in <game>\Mods\.gml-managed): removing or
 // disabling (disabled.txt) the plugin removes its mod on the next launch, and a mod installed by
 // hand is never touched or overwritten.
@@ -81,7 +84,22 @@ static void RemoveTree(const std::wstring& dir) {
     RemoveDirectoryW(dir.c_str());
 }
 
-// Make dst an exact copy of src. Returns the number of files copied; *failed counts errors.
+// Put file s at d: a hard link when both are on one volume (the usual case: GML\plugins and Mods are both in the
+// game folder), so a big mod (a 3.3 GB map) takes no second copy's worth of disk and needs no copy time; a copy
+// otherwise. A hard link shares size and write time with its source, so SameFile() sees it as up to date, and
+// deleting the link (the mod's removal) leaves the source alone. A d that can't be deleted (in use) is copied over.
+static bool Place(const std::wstring& s, const std::wstring& d, bool* linked) {
+    *linked = false;
+    if (GetFileAttributesW(d.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        SetFileAttributesW(d.c_str(), FILE_ATTRIBUTE_NORMAL);
+        if (!DeleteFileW(d.c_str())) return CopyFileW(s.c_str(), d.c_str(), FALSE) != 0;
+    }
+    if (CreateHardLinkW(d.c_str(), s.c_str(), nullptr)) return *linked = true;
+    return CopyFileW(s.c_str(), d.c_str(), FALSE) != 0;
+}
+
+// Make dst an exact copy of src (hard links where possible). Returns the number of files placed; *failed counts
+// errors.
 static int Mirror(const std::wstring& src, const std::wstring& dst, int* failed) {
     CreateDirectoryW(dst.c_str(), nullptr);
     std::set<std::wstring> keep;  // lower-cased names present in src
@@ -98,8 +116,11 @@ static int Mirror(const std::wstring& src, const std::wstring& dst, int* failed)
             std::wstring s = src + L"\\" + n, d = dst + L"\\" + n;
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { copied += Mirror(s, d, failed); continue; }
             if (SameFile(s, d)) continue;
-            if (CopyFileW(s.c_str(), d.c_str(), FALSE)) copied++;
-            else { (*failed)++; LOGE("mods: copy of %s failed (error %lu)", Rel(s).c_str(), GetLastError()); }
+            bool linked = false;
+            if (Place(s, d, &linked)) {
+                copied++;
+                LOGI("mods: %s %s", linked ? "linked" : "copied", Rel(s).c_str());
+            } else { (*failed)++; LOGE("mods: copy of %s failed (error %lu)", Rel(s).c_str(), GetLastError()); }
         } while (FindNextFileW(h, &fd));
         FindClose(h);
     }

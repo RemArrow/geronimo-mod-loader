@@ -50,6 +50,8 @@ echo === GML Manager (build\GMLManager.exe)
 rem its version is the loader's (src\version.h); needs the .NET SDK, skipped without it
 for /f "tokens=3" %%V in ('findstr /c:"define GML_VERSION_STRING" "%ROOT%src\version.h"') do set GMLVER=%%~V
 where dotnet >nul 2>nul || (echo dotnet not found - GML Manager skipped& goto plugins)
+rem vcvars64 sets Platform=x64, which sends the output to bin\x64\Release instead of bin\Release
+set "Platform="
 dotnet build "%ROOT%manager\GMLManager.csproj" -c Release -nologo -v q -p:Version=%GMLVER% || exit /b 1
 copy /y "%ROOT%manager\bin\Release\GMLManager.exe" "%OUT%\" >nul || exit /b 1
 
