@@ -573,7 +573,7 @@ namespace GMLManager
                 if (q.Length == 0 || row.Search.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) _forge.Add(row);
             }
             ForgeStatus.Text = _forgeError != null ? _forgeError
-                : _forgeMods.Count == 0 ? "No community mods yet. Be the first: Upload a mod."
+                : _forgeMods.Count == 0 ? "No community mods yet. Uploading happens on the website."
                 : q.Length > 0 ? $"{_forge.Count} of {_forgeMods.Count} mods"
                 : $"{_forgeMods.Count} mod{(_forgeMods.Count == 1 ? "" : "s")} · {_forgeMods.Count(m => m.Featured)} featured";
         }
@@ -584,7 +584,6 @@ namespace GMLManager
         }
 
         async void OnForgeRefresh(object sender, RoutedEventArgs e) => await LoadForge();
-        void OnForgeUpload(object sender, RoutedEventArgs e) => Url(Forge.UploadUrl);
         void OnForgeSite(object sender, RoutedEventArgs e) => Url(Forge.SiteUrl);
 
         void OnForgePage(object sender, RoutedEventArgs e)

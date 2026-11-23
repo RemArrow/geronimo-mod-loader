@@ -3,5 +3,5 @@
 #pragma once
 #define GML_VERSION_MAJOR 2
 #define GML_VERSION_MINOR 5
-#define GML_VERSION_PATCH 0
-#define GML_VERSION_STRING "2.5.0"
+#define GML_VERSION_PATCH 1
+#define GML_VERSION_STRING "2.5.1"

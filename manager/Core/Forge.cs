@@ -38,7 +38,6 @@ namespace GMLManager.Core
     public static class Forge
     {
         public static readonly string Base = (Environment.GetEnvironmentVariable("GMLMANAGER_FORGE") ?? "https://fireteamdevgru.org").TrimEnd('/');
-        public static string UploadUrl => Base + "/forge/upload";
         public static string SiteUrl => Base + "/forge";
 
         static readonly HttpClient Http;

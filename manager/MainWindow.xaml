@@ -172,7 +172,6 @@
         <DockPanel Margin="10,12,10,0">
           <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
             <Button Content="Refresh" Click="OnForgeRefresh" DockPanel.Dock="Right" Margin="0" />
-            <Button Content="Upload a mod" Click="OnForgeUpload" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" />
             <Button Content="Website" Click="OnForgeSite" DockPanel.Dock="Right" />
             <TextBlock Text="Search" Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,8,0" />
             <TextBox x:Name="ForgeSearch" Width="220" TextChanged="OnForgeSearch" ToolTip="Name, description, category or creator" />
