@@ -1,5 +1,5 @@
 {
-  "_readme": "The mods GML Manager offers in its Browse tab. To list your mod, open a pull request adding an entry. Each mod needs a public GitHub repo whose releases carry a zip laid out like Binaries\\Win64 (GML\\plugins\\<Name>\\...). guid must match the GML_PLUGIN guid in the DLL; asset is a wildcard for the release zip's name.",
+  "_readme": "The mods GML Manager offers in its Browse tab. To list your mod, open a pull request adding an entry. Each mod needs a public GitHub repo whose releases carry a zip laid out like Binaries\\Win64 (GML\\plugins\\<Name>\\...). guid must match the GML_PLUGIN guid in the DLL; asset is a wildcard for the release zip's name. A zip over 2 GB can be split into parts (Name.zip.001, .002): list them with parts (a wildcard), give the joined zip's sha256, and point asset at nothing so managers before 2.4.4 fail cleanly. requires names another entry's guid, offered first.",
   "version": 1,
   "mods": [
     {
@@ -81,9 +81,22 @@
       "guid": "com.remarrow.custommaps",
       "name": "Custom Maps",
       "author": "RemArrow",
-      "description": "Puts custom maps in the mission menu with a Free Roam mode. Maps are separate downloads on its release page (Myrne, by SpectrumB, with the steps to join its parts).",
+      "description": "Puts custom maps in the mission menu with a Free Roam mode. Maps are separate downloads: Myrne is in this list.",
       "repo": "RemArrow/geronimo-custom-maps",
       "asset": "CustomMaps-*.zip",
+      "tags": ["maps"]
+    },
+    {
+      "guid": "com.remarrow.map.myrne",
+      "name": "Myrne (map)",
+      "author": "SpectrumB, ported by RemArrow",
+      "description": "Myrne, the snowy 660 m BONELAB village, rebuilt for Geronimo: pick it in the mission menu (Free Roam, or PvP with the PvP plugin). A 3.5 GB download; installs Custom Maps too if you don't have it.",
+      "repo": "RemArrow/geronimo-custom-maps",
+      "asset": "Myrne-*.zip.parts-need-gml-manager-2.4.4",
+      "parts": "Myrne-*.zip.0*",
+      "sha256": "BF60BC5FDD53D2E3A90EDABD759C5C256D6D3306AAF1CE696013BA52C941E8FD",
+      "requires": "com.remarrow.custommaps",
+      "credits": "Map by SpectrumB, shared with permission",
       "tags": ["maps"]
     }
   ]

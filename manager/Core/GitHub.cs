@@ -33,6 +33,12 @@ namespace GMLManager.Core
             return Assets.FirstOrDefault(a => rx.IsMatch(a.Name));
         }
 
+        public List<ReleaseAsset> FindAssets(string pattern)
+        {
+            var rx = Pattern(pattern);
+            return Assets.Where(a => rx.IsMatch(a.Name)).OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
         // "Name-*.zip" style wildcard, or a regex when it starts with ^
         public static Regex Pattern(string p) =>
             p.StartsWith("^") ? new Regex(p, RegexOptions.IgnoreCase)
@@ -136,16 +142,28 @@ namespace GMLManager.Core
             return null;
         }
 
-        public static async Task Download(string url, string dest, IProgress<double> progress, CancellationToken ct = default)
+        // A download that was cut off (dest + ".part" left behind) carries on where it stopped when
+        // the server takes a Range request; else it starts over. size > 0: a finished dest of that
+        // size is kept as it is (multi-GB map parts aren't fetched twice).
+        public static async Task Download(string url, string dest, IProgress<double> progress, CancellationToken ct = default, long size = -1)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(dest));
+            if (size > 0 && File.Exists(dest) && new FileInfo(dest).Length == size) { progress?.Report(1); return; }
             var tmp = dest + ".part";
-            using (var res = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
+            long have = File.Exists(tmp) ? new FileInfo(tmp).Length : 0;
+            if (size > 0 && have > size) { File.Delete(tmp); have = 0; }
+            using (var req = new HttpRequestMessage(HttpMethod.Get, url))
+            {
+            if (have > 0) req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(have, null);
+            using (var res = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
             {
                 if (!res.IsSuccessStatusCode) throw new GitHubException($"Download failed ({(int)res.StatusCode}): {url}");
-                long total = res.Content.Headers.ContentLength ?? -1, done = 0;
+                bool resume = have > 0 && res.StatusCode == HttpStatusCode.PartialContent;
+                if (!resume) have = 0;
+                long clen = res.Content.Headers.ContentLength ?? -1;
+                long total = clen >= 0 ? clen + have : -1, done = have;
                 using (var src = await res.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                using (var dst = File.Create(tmp))
+                using (var dst = new FileStream(tmp, resume ? FileMode.Append : FileMode.Create, FileAccess.Write))
                 {
                     var buf = new byte[1 << 16];
                     int n;
@@ -156,6 +174,8 @@ namespace GMLManager.Core
                         if (total > 0) progress?.Report((double)done / total);
                     }
                 }
+                if (total > 0 && done != total) throw new GitHubException($"Download cut off at {done:N0} of {total:N0} bytes: try again, it carries on.");
+            }
             }
             if (File.Exists(dest)) File.Delete(dest);
             File.Move(tmp, dest);

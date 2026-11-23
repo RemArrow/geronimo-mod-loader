@@ -155,7 +155,8 @@ namespace GMLManager
                 _latestError.TryGetValue(m.Guid, out row.Error);
                 if (row.Latest == null && row.Error == null && _onlineError != null) row.Error = "couldn't check";
                 row.Installed = infos.Where(p => string.Equals(p.Guid, m.Guid, StringComparison.OrdinalIgnoreCase))
-                                     .OrderByDescending(p => p.Version, Comparer<string>.Create(Versions.Compare)).FirstOrDefault();
+                                     .OrderByDescending(p => p.Version, Comparer<string>.Create(Versions.Compare)).FirstOrDefault()
+                               ?? (HasGame ? Updater.InstalledContent(Win64, manifest, m) : null);
                 _catalog.Add(row);
             }
             CatalogSource.Text = $"{_mods.Count} mod(s) · catalog: {Catalog.Source}";
@@ -515,7 +516,25 @@ namespace GMLManager
                                     row.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                     await InstallLoader();
             }
-            await Run($"Installing {row.Name} {row.Latest.Version}…", p => Updater.InstallMod(Win64, row.Mod, row.Latest, p));
+            // a map needs its plugin (Custom Maps): offer to install that first
+            var needs = string.IsNullOrEmpty(row.Mod.Requires) ? null : _catalog.FirstOrDefault(c => string.Equals(c.Mod.Guid, row.Mod.Requires, StringComparison.OrdinalIgnoreCase));
+            if (needs != null && needs.Installed == null)
+            {
+                if (needs.Latest == null) { MessageBox.Show(this, $"{row.Name} needs {needs.Name}, which couldn't be found online right now. Try again later.", row.Name); return; }
+                if (MessageBox.Show(this, $"{row.Name} needs {needs.Name}, which isn't installed. Install it too?",
+                                    row.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                var mod = needs.Mod; var rel = needs.Latest;
+                if (!await Run($"Installing {mod.Name} {rel.Version}…", p => Updater.InstallMod(Win64, mod, rel, p))) return;
+            }
+            if (!string.IsNullOrEmpty(row.Mod.Parts))
+            {
+                long size = row.Latest.FindAssets(row.Mod.Parts).Sum(a => a.Size);
+                if (MessageBox.Show(this, $"{row.Name} is a {size / (double)(1L << 30):0.0} GB download. Installing it needs about {2 * size / (double)(1L << 30):0} GB free (the download, then the unpacked files in the game folder). Download it now?\n\n" +
+                                          "If the download stops, click Install again: it carries on where it stopped.",
+                                    row.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            }
+            var m = row.Mod; var r = row.Latest;
+            await Run($"Installing {m.Name} {r.Version}…", p => Updater.InstallMod(Win64, m, r, p));
         }
 
         void OnCatalogPage(object sender, RoutedEventArgs e)

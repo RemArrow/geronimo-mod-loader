@@ -177,8 +177,15 @@ namespace GMLManager.Core
         // DLL, or loose files), which go to GML\plugins\<folder or zip name>\.
         public static InstallResult InstallZip(string win64, string zip, string displayName = null)
         {
+            using (var s = File.OpenRead(zip))
+                return InstallZip(win64, s, displayName ?? Path.GetFileNameWithoutExtension(zip));
+        }
+
+        // The same from a stream (a zip joined from parts, read in place).
+        public static InstallResult InstallZip(string win64, Stream zip, string displayName)
+        {
             var res = new InstallResult();
-            using (var a = ZipFile.OpenRead(zip))
+            using (var a = new ZipArchive(zip, ZipArchiveMode.Read, leaveOpen: true))
             {
                 var entries = a.Entries.Where(e => !string.IsNullOrEmpty(e.Name))
                                        .Select(e => (e, n: e.FullName.Replace('\\', '/').TrimStart('/')))
@@ -199,7 +206,7 @@ namespace GMLManager.Core
                     else if (tops.Count == 1 && tops[0] != "")
                         prefix = "GML/plugins/";                                 // MyMod/MyMod.dll
                     else
-                        prefix = "GML/plugins/" + Safe(displayName ?? Path.GetFileNameWithoutExtension(zip)) + "/";
+                        prefix = "GML/plugins/" + Safe(displayName ?? "Mod") + "/";
                 }
 
                 string root = Path.GetFullPath(win64).TrimEnd('\\') + "\\";

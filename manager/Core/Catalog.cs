@@ -13,6 +13,10 @@ namespace GMLManager.Core
     public class CatalogMod
     {
         public string Guid, Name, Author, Description, Repo, Asset, Credits, Homepage, MinGml;
+        // A download too big for one GitHub asset (2 GB limit): "parts" is a wildcard for its pieces
+        // (Name.zip.001, .002, ...), which are joined in name order into one zip. Older managers only
+        // read "asset", so point that at nothing they could half-install.
+        public string Parts, Sha256, Requires;   // sha256 of the joined zip; requires = another catalog guid
         public List<string> Tags = new List<string>();
         public string Page => !string.IsNullOrEmpty(Homepage) ? Homepage : $"https://github.com/{Repo}";
     }
@@ -58,7 +62,8 @@ namespace GMLManager.Core
             {
                 Guid = m.S("guid"), Name = m.S("name"), Author = m.S("author"), Description = m.S("description"),
                 Repo = m.S("repo"), Asset = m.S("asset") ?? "*.zip", Credits = m.S("credits"), Homepage = m.S("homepage"),
-                MinGml = m.S("minGml"), Tags = m.A("tags").Select(t => t?.ToString()).Where(t => t != null).ToList()
+                MinGml = m.S("minGml"), Parts = m.S("parts"), Sha256 = m.S("sha256"), Requires = m.S("requires"),
+                Tags = m.A("tags").Select(t => t?.ToString()).Where(t => t != null).ToList()
             }).Where(m => !string.IsNullOrEmpty(m.Guid) && !string.IsNullOrEmpty(m.Repo)).ToList();
         }
     }
