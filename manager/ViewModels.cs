@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -36,11 +37,14 @@ namespace GMLManager
         public Visibility UpdateVisible => HasUpdate ? Visibility.Visible : Visibility.Collapsed;
         public Visibility DisabledVisible => Info.Disabled ? Visibility.Visible : Visibility.Collapsed;
         public Visibility LocalVisible => !Managed && Catalog == null && !Info.ContentOnly ? Visibility.Visible : Visibility.Collapsed;
+        public string ForgeSource;       // "forge:<id>" when it came from the GML Forge
+        public Visibility ForgeVisible => ForgeSource != null ? Visibility.Visible : Visibility.Collapsed;
         public string ProblemText => string.Join("\n", Problems);
         public Visibility ProblemVisible => Problems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         public Visibility SettingsVisible { get; set; }
         public double Opacity => Info.Disabled ? 0.55 : 1.0;
-        public string Tooltip => $"{Info.Path}" + (Managed ? "\nInstalled by GML Manager: updates automatically." : Catalog != null ? "\nInstalled by hand: updates only when you click Update." : "");
+        public string Tooltip => $"{Info.Path}" + (ForgeSource != null ? "\nInstalled from the GML Forge (a community upload)."
+                                : Managed ? "\nInstalled by GML Manager: updates automatically." : Catalog != null ? "\nInstalled by hand: updates only when you click Update." : "");
     }
 
     // One catalog entry (Browse tab).
@@ -64,5 +68,36 @@ namespace GMLManager
         public Visibility ButtonVisible => IsInstalledCurrent ? Visibility.Collapsed : Visibility.Visible;
         public Visibility InstalledVisible => IsInstalledCurrent ? Visibility.Visible : Visibility.Collapsed;
         public string InstalledText => Installed == null ? "" : $"installed: {Installed.Version}" + (Installed.Disabled ? " (off)" : "");
+    }
+
+    // One GML Forge upload (Forge tab).
+    public class ForgeRow : Notify
+    {
+        public ForgeMod Mod;
+        public bool Installed;
+
+        public string Name => Mod.Title;
+        public string Author => string.IsNullOrEmpty(Mod.Uploader) ? "" : "by " + Mod.Uploader;
+        public string Summary => Mod.Summary;
+        public string ImageUrl => Mod.ImageUrl;
+        public Visibility ImageVisible => Mod.HasImage ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility NoImageVisible => Mod.HasImage ? Visibility.Collapsed : Visibility.Visible;
+        public string Category => Mod.Category;
+        public Visibility FeaturedVisible => Mod.Featured ? Visibility.Visible : Visibility.Collapsed;
+        public string Meta => string.Join("  ·  ", new[]
+        {
+            string.IsNullOrWhiteSpace(Mod.Version) ? null : Mod.Version,
+            Mod.Category,
+            $"{Mod.Downloads:N0} download{(Mod.Downloads == 1 ? "" : "s")}",
+            Size(Mod.FileSize),
+            Mod.Created.Year > 2000 ? Mod.Created.ToLocalTime().ToString("d MMM yyyy") : null,
+        }.Where(s => !string.IsNullOrEmpty(s)));
+        public string ActionText => Mod.CanInstall ? "Install" : "Get on website";
+        public string ActionTip => Mod.CanInstall ? $"Download {Mod.FileName}, check it and install it" : $"{Mod.FileName} is a {Mod.Ext} file: open its page to download it";
+        public Visibility ButtonVisible => Installed ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility InstalledVisible => Installed ? Visibility.Visible : Visibility.Collapsed;
+        public string Search => $"{Mod.Title} {Mod.Summary} {Mod.Category} {Mod.Uploader}";
+
+        static string Size(long b) => b <= 0 ? null : b < 1 << 20 ? $"{Math.Max(1, b / 1024)} KB" : $"{b / (double)(1 << 20):0.0} MB";
     }
 }

@@ -68,7 +68,7 @@
                        Text="Or drop a mod's .zip or .dll on this window" />
           </DockPanel>
           <TextBlock x:Name="NoPlugins" DockPanel.Dock="Top" Style="{StaticResource Dim}" Visibility="Collapsed" Margin="2,8"
-                     Text="No mods installed yet. Find some in the Browse tab." />
+                     Text="No mods installed yet. Find some in the Browse and Forge tabs." />
           <ListBox x:Name="PluginList">
             <ListBox.ItemTemplate>
               <DataTemplate>
@@ -94,6 +94,10 @@
                         <Border Style="{StaticResource Badge}" Background="#FF2A2D35" Visibility="{Binding LocalVisible}"
                                 ToolTip="Not in the catalog: installed by hand or your own build. GML Manager never updates it.">
                           <TextBlock Text="local" FontSize="11" Foreground="{StaticResource FgDim}" />
+                        </Border>
+                        <Border Style="{StaticResource Badge}" Background="#FF2B2438" Visibility="{Binding ForgeVisible}"
+                                ToolTip="Installed from the GML Forge: a community upload.">
+                          <TextBlock Text="Forge" FontSize="11" Foreground="#FFB9A2E8" />
                         </Border>
                         <Border Style="{StaticResource Badge}" Background="#FF2A2D35" Visibility="{Binding DisabledVisible}">
                           <TextBlock Text="off" FontSize="11" Foreground="{StaticResource FgDim}" />
@@ -163,8 +167,66 @@
         </DockPanel>
       </TabItem>
 
+      <!-- ================================================================ Forge -->
+      <TabItem x:Name="ForgeTab" Header="Forge">
+        <DockPanel Margin="10,12,10,0">
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button Content="Refresh" Click="OnForgeRefresh" DockPanel.Dock="Right" Margin="0" />
+            <Button Content="Upload a mod" Click="OnForgeUpload" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" />
+            <Button Content="Website" Click="OnForgeSite" DockPanel.Dock="Right" />
+            <TextBlock Text="Search" Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox x:Name="ForgeSearch" Width="220" TextChanged="OnForgeSearch" ToolTip="Name, description, category or creator" />
+            <TextBlock x:Name="ForgeStatus" Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Dim}" FontSize="12" Margin="2,0,0,10" TextWrapping="Wrap"
+                     Text="Community mods from fireteamdevgru.org. Players make them; FDG checks each upload before it shows up here. Only install mods you trust." />
+          <ListBox x:Name="ForgeList">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Border Style="{StaticResource Card}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="144" Height="81" Margin="0,0,16,0" CornerRadius="4" Background="{StaticResource PanelHi}" ClipToBounds="True" VerticalAlignment="Top">
+                      <Grid>
+                        <Image Source="{Binding ImageUrl}" Stretch="UniformToFill" Visibility="{Binding ImageVisible}" />
+                        <TextBlock Text="{Binding Category}" Style="{StaticResource Dim}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding NoImageVisible}" />
+                      </Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                        <Border Style="{StaticResource Badge}" Background="#FF3A2F1A" Visibility="{Binding FeaturedVisible}">
+                          <TextBlock Text="★ featured" FontSize="11" Foreground="{StaticResource Accent}" />
+                        </Border>
+                        <TextBlock Text="{Binding Author}" Style="{StaticResource Dim}" Margin="8,0,0,0" VerticalAlignment="Bottom" />
+                      </StackPanel>
+                      <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                      <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding Meta}" Style="{StaticResource Dim}" FontSize="12" />
+                        <Button Content="Page" Style="{StaticResource LinkButton}" Click="OnForgePage" Tag="{Binding}" Margin="14,0,0,0" FontSize="12" />
+                      </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="16,0,0,0" MinWidth="130">
+                      <Button Content="{Binding ActionText}" ToolTip="{Binding ActionTip}" Click="OnForgeInstall" Tag="{Binding}" Margin="0"
+                              Style="{StaticResource AccentButton}" Visibility="{Binding ButtonVisible}" />
+                      <TextBlock Text="Installed ✓" Foreground="{StaticResource Good}" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                 Visibility="{Binding InstalledVisible}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+
       <!-- ================================================================ Developer -->
-      <TabItem Header="Developer">
+      <TabItem x:Name="DevTab" Header="Developer">
         <Grid Margin="10,12,10,8">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />

@@ -104,8 +104,8 @@ static void LoadConfig() {
     g_cfg.timestamps = CfgBool(b("Logging.Disk", "Timestamps", GML_CONFIG_BOOL, "false",
                                  "Prefix each log line with the time of day."));
     g_cfg.syncPaks = CfgBool(b("Paks", "Sync", GML_CONFIG_BOOL, "true",
-                               "Copy cooked containers (.utoc/.ucas/.pak) found under plugins\\ into\n"
-                               "Content\\Paks\\~GML at launch, so plugins can ship them."));
+                               "Move cooked containers (.utoc/.ucas/.pak) found under plugins\\ into plugins\\Assets\\<Plugin>\\,\n"
+                               "then deploy everything in plugins\\Assets to Content\\Paks\\~GML at launch."));
     g_cfg.syncMods = CfgBool(b("Mods", "Sync", GML_CONFIG_BOOL, "true",
                                "Copy Unreal mod plugins (a folder holding <Name>.uplugin) found under plugins\\\n"
                                "into <game>\\Mods at launch. The engine mounts those itself, new assets included."));

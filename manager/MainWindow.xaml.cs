@@ -20,6 +20,10 @@ namespace GMLManager
         readonly Settings _s = Settings.Load();
         readonly ObservableCollection<PluginRow> _plugins = new ObservableCollection<PluginRow>();
         readonly ObservableCollection<CatalogRow> _catalog = new ObservableCollection<CatalogRow>();
+        readonly ObservableCollection<ForgeRow> _forge = new ObservableCollection<ForgeRow>();
+        List<ForgeMod> _forgeMods;       // null until the Forge tab is first opened
+        string _forgeError;
+        bool _forgeLoading;
         List<CatalogMod> _mods = Catalog.BuiltIn();
         readonly Dictionary<string, Release> _latest = new Dictionary<string, Release>(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, string> _latestError = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -38,6 +42,7 @@ namespace GMLManager
             InitializeComponent();
             PluginList.ItemsSource = _plugins;
             CatalogList.ItemsSource = _catalog;
+            ForgeList.ItemsSource = _forge;
             Loaded += async (s, e) => await Startup();
             _timer.Tick += (s, e) => Tick();
         }
@@ -118,6 +123,7 @@ namespace GMLManager
                 row.Catalog = _mods.FirstOrDefault(m => string.Equals(m.Guid, p.Guid, StringComparison.OrdinalIgnoreCase));
                 if (row.Catalog != null) _latest.TryGetValue(row.Catalog.Guid, out row.Latest);
                 row.Managed = manifest.Mods.ContainsKey(p.Guid);
+                if (manifest.Mods.TryGetValue(p.Guid, out var me) && me.Repo != null && me.Repo.StartsWith("forge:")) row.ForgeSource = me.Repo;
                 row.SettingsVisible = !p.ContentOnly && File.Exists(Installer.ConfigPath(Win64, p.Guid)) ? Visibility.Visible : Visibility.Collapsed;
                 if (!p.Disabled && !p.ContentOnly)
                 {
@@ -160,6 +166,7 @@ namespace GMLManager
                 _catalog.Add(row);
             }
             CatalogSource.Text = $"{_mods.Count} mod(s) · catalog: {Catalog.Source}";
+            RefreshForge(manifest);
 
             RefreshGmlCfg();
             RefreshBanner();
@@ -323,7 +330,7 @@ namespace GMLManager
                 RefreshPlay();
                 if (!running) RefreshLocal();   // the game may have written configs and logs
             }
-            if (Tabs.SelectedIndex == 2) RefreshLog(false);
+            if (Tabs.SelectedItem == DevTab) RefreshLog(false);
         }
 
         // ================================================================== header
@@ -542,6 +549,69 @@ namespace GMLManager
             if ((sender as FrameworkElement)?.Tag is CatalogRow row) Url(row.Mod.Page);
         }
 
+        // ================================================================== Forge tab
+
+        async Task LoadForge()
+        {
+            if (_forgeLoading) return;
+            _forgeLoading = true;
+            ForgeStatus.Text = "Loading the GML Forge…";
+            try { _forgeMods = await Forge.Load(); _forgeError = null; }
+            catch (Exception ex) { _forgeError = ex.Message; _forgeMods = _forgeMods ?? new List<ForgeMod>(); }
+            finally { _forgeLoading = false; }
+            RefreshForge(HasGame ? Manifest.Load(Win64) : new Manifest());
+        }
+
+        void RefreshForge(Manifest manifest)
+        {
+            if (_forgeMods == null) return;
+            var q = (ForgeSearch.Text ?? "").Trim();
+            _forge.Clear();
+            foreach (var m in _forgeMods.OrderByDescending(m => m.Featured).ThenByDescending(m => m.Created))
+            {
+                var row = new ForgeRow { Mod = m, Installed = HasGame && Forge.IsInstalled(Win64, manifest, m) };
+                if (q.Length == 0 || row.Search.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) _forge.Add(row);
+            }
+            ForgeStatus.Text = _forgeError != null ? _forgeError
+                : _forgeMods.Count == 0 ? "No community mods yet. Be the first: Upload a mod."
+                : q.Length > 0 ? $"{_forge.Count} of {_forgeMods.Count} mods"
+                : $"{_forgeMods.Count} mod{(_forgeMods.Count == 1 ? "" : "s")} · {_forgeMods.Count(m => m.Featured)} featured";
+        }
+
+        void OnForgeSearch(object sender, TextChangedEventArgs e)
+        {
+            if (_forgeMods != null) RefreshForge(HasGame ? Manifest.Load(Win64) : new Manifest());
+        }
+
+        async void OnForgeRefresh(object sender, RoutedEventArgs e) => await LoadForge();
+        void OnForgeUpload(object sender, RoutedEventArgs e) => Url(Forge.UploadUrl);
+        void OnForgeSite(object sender, RoutedEventArgs e) => Url(Forge.SiteUrl);
+
+        void OnForgePage(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is ForgeRow row) Url(row.Mod.PageUrl);
+        }
+
+        async void OnForgeInstall(object sender, RoutedEventArgs e)
+        {
+            var row = (sender as FrameworkElement)?.Tag as ForgeRow;
+            if (row == null) return;
+            if (!row.Mod.CanInstall) { Url(row.Mod.PageUrl); return; }
+            if (!HasGame) { MessageBox.Show(this, "Set the game folder first (Settings tab).", row.Name); return; }
+            if (!CheckGameClosed()) return;
+            if (!_loader.Installed)
+            {
+                if (MessageBox.Show(this, $"{row.Name} needs the mod loader (GML), which isn't installed yet. Install it too?",
+                                    row.Name, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                await InstallLoader();
+                if (!_loader.Installed) return;
+            }
+            var mod = row.Mod;
+            List<string> names = null;
+            if (await Run($"Installing {mod.Title} from the GML Forge…", async p => names = await Forge.Install(Win64, mod, p)))
+                Status("Installed from the Forge: " + string.Join(", ", names));
+        }
+
         // ================================================================== Developer tab
 
         long _logStamp;
@@ -549,7 +619,9 @@ namespace GMLManager
 
         void OnTabChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (e.Source == Tabs && Tabs.SelectedIndex == 2) RefreshLog(true);
+            if (e.Source != Tabs) return;
+            if (Tabs.SelectedItem == DevTab) RefreshLog(true);
+            if (Tabs.SelectedItem == ForgeTab && _forgeMods == null) _ = LoadForge();
         }
 
         void RefreshLog(bool force)

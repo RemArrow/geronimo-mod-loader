@@ -107,9 +107,11 @@ Geronimo\Binaries\Win64\
       <GUID>.cfg               one per plugin, created by Config.Bind(...)
     patchers\*.dll             run at process entry, before the engine starts
     plugins\                   plugins, any folder depth, plus their content
+      Assets\                  every plugin's paks (2.5), deployed to Content\Paks\~GML\ at launch
+        MyPlugin\*.utoc/.ucas/.pak
       MyPlugin\
         MyPlugin.dll
-        Paks\*.utoc/.ucas/.pak -> copied to Content\Paks\~GML\ at launch
+        Paks\*.utoc/.ucas/.pak -> moved to plugins\Assets\MyPlugin\ at launch
         Mods\<Name>\<Name>.uplugin + its Content\Paks\Windows\ -> mirrored to Geronimo\Mods\<Name>\ (2.4)
     LogOutput.log              the log, rewritten every launch
 ```
@@ -133,6 +135,14 @@ GML differs from BepInEx in four ways:
 
 - Strings in `.cfg` files are written raw, so Windows paths need no escaping.
 - A plugin folder containing `disabled.txt` is skipped, along with its paks.
+- **Paks live in `plugins\Assets\` (2.5).** A plugin can ship its containers anywhere in its own
+  folder (conventionally `Paks\`); at launch the loader moves them to `plugins\Assets\<Plugin>\`,
+  where `<Plugin>` is the plugin's top-level folder, and deploys everything in `Assets\` to
+  `Content\Paks\~GML\` (hard links on the same drive). A newer copy shipped by an update replaces
+  the one in `Assets\`. Removing `plugins\<Plugin>\` removes `Assets\<Plugin>\` on the next launch;
+  `disabled.txt` in either folder stops it being mounted. Folders you put in `Assets\` yourself are
+  never moved or removed (only those listed in `Assets\.gml-owners` are managed). `Assets` is a
+  reserved name: a plugin folder can't be called that.
 - There is no assembly cache. Metadata is read straight from each DLL's export table, which
   takes microseconds.
 - Plugins can't be hot-reloaded, the same as in BepInEx.
@@ -381,7 +391,7 @@ Created with descriptions on first launch.
 | `[Logging.Console] Enabled` | false | console window mirroring the log (flat-screen debugging) |
 | `[Logging.Disk] LogLevel` | Info | Debug / Info / Message / Warning / Error / Fatal |
 | `[Logging.Disk] Timestamps` | false | prefix log lines with the time of day |
-| `[Paks] Sync` | true | deploy containers found under `plugins\` |
+| `[Paks] Sync` | true | move containers under `plugins\` into `plugins\Assets\` and deploy them |
 | `[Engine] TraceProcessEvent` | false | log each distinct UFunction seen once |
 | `[Engine] TickIntervalMs` | 8 | fallback tick rate if the frame counter can't be resolved |
 | `[Offsets] GObjects / AppendString / ProcessEvent` | Dumper-7 values | RVAs |
