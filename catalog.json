@@ -89,6 +89,15 @@
       "tags": ["gear"]
     },
     {
+      "guid": "com.remarrow.patches",
+      "name": "Custom Patches",
+      "author": "RemArrow",
+      "description": "Three new patches at the end of the kit station's patch menu: LarpTac, Rogue and Stripes, on helmets, caps and plate carriers.",
+      "repo": "RemArrow/geronimo-custom-patches",
+      "asset": "Patches-*.zip",
+      "tags": ["gear"]
+    },
+    {
       "guid": "com.remarrow.handposer",
       "name": "Hand Poser",
       "author": "RemArrow",
