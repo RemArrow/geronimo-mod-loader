@@ -78,6 +78,15 @@
       "tags": ["tool"]
     },
     {
+      "guid": "com.remarrow.pvp",
+      "name": "PvP",
+      "author": "RemArrow",
+      "description": "Blue vs Red team deathmatch on the game's own missions: every mission gets a PvP mode with no AI, respawns at your base, rounds and grenades hurt players, and a wrist scoreboard. Only the host needs it.",
+      "repo": "RemArrow/geronimo-pvp",
+      "asset": "PvP-*.zip",
+      "tags": ["gameplay", "multiplayer"]
+    },
+    {
       "guid": "com.remarrow.custommaps",
       "name": "Custom Maps",
       "author": "RemArrow",
