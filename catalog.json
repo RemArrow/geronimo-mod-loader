@@ -52,6 +52,16 @@
       "tags": ["weapon"]
     },
     {
+      "guid": "com.remarrow.uar15",
+      "name": "UAR-15",
+      "author": "RemArrow",
+      "description": "A UAR-15 in the Assault Rifles list: 20-inch AR-15 with a free-float M-LOK handguard, MBUS sights and its own moving parts, built on the game's M4A1.",
+      "repo": "RemArrow/geronimo-uar15",
+      "asset": "UAR15-*.zip",
+      "credits": "Model and textures from the BONELAB Cold Weapon Pack by Bonewar, redistributed with permission",
+      "tags": ["weapon"]
+    },
+    {
       "guid": "com.remarrow.gunsmith",
       "name": "Gunsmith",
       "author": "RemArrow",
