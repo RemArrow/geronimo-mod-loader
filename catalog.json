@@ -42,6 +42,16 @@
       "tags": ["gear", "gameplay"]
     },
     {
+      "guid": "com.remarrow.saiga12",
+      "name": "Saiga-12K",
+      "author": "RemArrow",
+      "description": "A full-auto Saiga-12K firing 12 gauge slugs, with the 5-round Sb.5 magazine and its own moving parts, in the gun station's Shotguns category.",
+      "repo": "RemArrow/geronimo-saiga-12k",
+      "asset": "Saiga12-*.zip",
+      "credits": "Model and textures from Escape from Tarkov by Battlestate Games, redistributed with permission",
+      "tags": ["weapon"]
+    },
+    {
       "guid": "com.remarrow.gunsmith",
       "name": "Gunsmith",
       "author": "RemArrow",
