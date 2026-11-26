@@ -132,7 +132,7 @@
       "repo": "RemArrow/geronimo-custom-maps",
       "asset": "Myrne-*.zip.parts-need-gml-manager-2.4.4",
       "parts": "Myrne-*.zip",
-      "sha256": "0827254DA5E790F5A1DCE7A01D575B8DFDA73D9FB53402EA6D9EDDD23C939886",
+      "sha256": "9D9CD1CE45DF8ACCFF7DD1CF077717F0A411BE7DBF6FBE05F717B14CD4820F3B",
       "requires": "com.remarrow.custommaps",
       "credits": "Map by SpectrumB, shared with permission",
       "tags": ["maps"]
